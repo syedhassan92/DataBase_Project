@@ -1,0 +1,26 @@
+import React from 'react';
+import PageTemplate from './PageTemplate';
+
+export const UserDashboard = () => <PageTemplate title="User Dashboard" description="Your personal dashboard" />;
+export const AdminDashboard = () => <PageTemplate title="Admin Dashboard" description="Admin management dashboard" />;
+export const Dashboard = () => <PageTemplate title="Dashboard" description="Main dashboard" />;
+export const Leagues = () => <PageTemplate title="Leagues" description="Manage leagues" />;
+export const LeagueDetails = () => <PageTemplate title="League Details" description="View league details" />;
+export const Tournaments = () => <PageTemplate title="Tournaments" description="Manage tournaments" />;
+export const TournamentDetails = () => <PageTemplate title="Tournament Details" description="View tournament details" />;
+export const Teams = () => <PageTemplate title="Teams" description="Manage teams" />;
+export const TeamDetails = () => <PageTemplate title="Team Details" description="View team details" />;
+export const Players = () => <PageTemplate title="Players" description="Manage players" />;
+export const PlayerDetails = () => <PageTemplate title="Player Details" description="View player details" />;
+export const Venues = () => <PageTemplate title="Venues" description="Manage venues" />;
+export const VenueDetails = () => <PageTemplate title="Venue Details" description="View venue details" />;
+export const VenueManagement = () => <PageTemplate title="Venue Management" description="Manage venues for events" />;
+export const Matches = () => <PageTemplate title="Matches" description="Manage matches" />;
+export const MatchDetails = () => <PageTemplate title="Match Details" description="View match details" />;
+export const MatchScheduling = () => <PageTemplate title="Match Scheduling" description="Schedule matches" />;
+export const TicketBooking = () => <PageTemplate title="Ticket Booking" description="Book tickets for matches" />;
+export const PerformanceStats = () => <PageTemplate title="Performance Stats" description="View performance statistics" />;
+export const PlayerTransfers = () => <PageTemplate title="Player Transfers" description="Manage player transfers" />;
+export const ReportingSystem = () => <PageTemplate title="Reporting System" description="Generate and view reports" />;
+export const Statistics = () => <PageTemplate title="Statistics" description="View statistics" />;
+export const MyBookings = () => <PageTemplate title="My Bookings" description="View your ticket bookings" />;
