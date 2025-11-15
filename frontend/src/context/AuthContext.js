@@ -10,7 +10,7 @@ export const AuthProvider = ({ children }) => {
   // Load user from localStorage on mount
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('authToken');
     
     if (storedUser && token) {
       try {
@@ -19,7 +19,7 @@ export const AuthProvider = ({ children }) => {
       } catch (error) {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem('user');
-        localStorage.removeItem('token');
+        localStorage.removeItem('authToken');
       }
     }
     setLoading(false);
@@ -29,14 +29,14 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
     setIsAuthenticated(true);
     localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', token);
+    localStorage.setItem('authToken', token);
   }, []);
 
   const logout = useCallback(() => {
     setUser(null);
     setIsAuthenticated(false);
     localStorage.removeItem('user');
-    localStorage.removeItem('token');
+    localStorage.removeItem('authToken');
   }, []);
 
   const value = {

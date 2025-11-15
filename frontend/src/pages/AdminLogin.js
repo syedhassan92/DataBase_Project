@@ -38,19 +38,26 @@ const AdminLogin = () => {
         return;
       }
 
-      // TODO: Replace with actual API call
-      const response = await fetch('http://localhost:5000/api/auth/admin-login', {
+      // API call to backend
+      const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, role: 'admin' }),
       });
 
       if (!response.ok) {
-        throw new Error('Admin login failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Admin login failed');
       }
 
       const data = await response.json();
-      login(data.user, data.token);
+      const userData = {
+        id: data.userId,
+        name: data.name,
+        email: formData.email,
+        role: 'admin',
+      };
+      login(userData, data.token);
       addNotification('Admin login successful!', 'success');
       navigate('/admin/dashboard');
     } catch (error) {

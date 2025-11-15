@@ -43,6 +43,9 @@ const Layout = ({ children }) => {
                 <NavLink to="/admin/tournaments" label="Tournaments" isActive={isActive("/admin/tournaments")} />
                 <NavLink to="/admin/teams" label="Teams" isActive={isActive("/admin/teams")} />
                 <NavLink to="/admin/players" label="Players" isActive={isActive("/admin/players")} />
+                <NavLink to="/admin/player-contracts" label="Player Contracts" isActive={isActive("/admin/player-contracts")} />
+                <NavLink to="/admin/coaches" label="Coaches" isActive={isActive("/admin/coaches")} />
+                <NavLink to="/admin/referees" label="Referees" isActive={isActive("/admin/referees")} />
                 <NavLink to="/admin/venues" label="Venues" isActive={isActive("/admin/venues")} />
                 <NavLink to="/admin/matches" label="Matches" isActive={isActive("/admin/matches")} />
               </div>
@@ -59,8 +62,11 @@ const Layout = ({ children }) => {
               <div className="pt-4 border-t">
                 <h3 className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Browse</h3>
                 <NavLink to="/leagues" label="Leagues" isActive={isActive("/leagues")} />
+                <NavLink to="/tournaments" label="Tournaments" isActive={isActive("/tournaments")} />
                 <NavLink to="/teams" label="Teams" isActive={isActive("/teams")} />
                 <NavLink to="/players" label="Players" isActive={isActive("/players")} />
+                <NavLink to="/coaches" label="Coaches" isActive={isActive("/coaches")} />
+                <NavLink to="/venues" label="Venues" isActive={isActive("/venues")} />
                 <NavLink to="/matches" label="Matches" isActive={isActive("/matches")} />
               </div>
             </>
@@ -126,6 +132,9 @@ const Layout = ({ children }) => {
                   <MobileNavLink to="/admin/tournaments" label="Tournaments" isActive={isActive("/admin/tournaments")} />
                   <MobileNavLink to="/admin/teams" label="Teams" isActive={isActive("/admin/teams")} />
                   <MobileNavLink to="/admin/players" label="Players" isActive={isActive("/admin/players")} />
+                  <MobileNavLink to="/admin/player-contracts" label="Player Contracts" isActive={isActive("/admin/player-contracts")} />
+                  <MobileNavLink to="/admin/coaches" label="Coaches" isActive={isActive("/admin/coaches")} />
+                  <MobileNavLink to="/admin/referees" label="Referees" isActive={isActive("/admin/referees")} />
                   <MobileNavLink to="/admin/venues" label="Venues" isActive={isActive("/admin/venues")} />
                   <MobileNavLink to="/admin/matches" label="Matches" isActive={isActive("/admin/matches")} />
                   <h3 className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase mt-3">Analytics</h3>
@@ -135,12 +144,13 @@ const Layout = ({ children }) => {
               )}
               {!isAdmin && (
                 <>
-                  <h3 className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase mt-3">Booking</h3>
-                  <MobileNavLink to="/user/bookings" label="My Bookings" isActive={isActive("/user/bookings")} />
                   <h3 className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase mt-3">Browse</h3>
                   <MobileNavLink to="/leagues" label="Leagues" isActive={isActive("/leagues")} />
+                  <MobileNavLink to="/tournaments" label="Tournaments" isActive={isActive("/tournaments")} />
                   <MobileNavLink to="/teams" label="Teams" isActive={isActive("/teams")} />
                   <MobileNavLink to="/players" label="Players" isActive={isActive("/players")} />
+                  <MobileNavLink to="/coaches" label="Coaches" isActive={isActive("/coaches")} />
+                  <MobileNavLink to="/venues" label="Venues" isActive={isActive("/venues")} />
                   <MobileNavLink to="/matches" label="Matches" isActive={isActive("/matches")} />
                 </>
               )}

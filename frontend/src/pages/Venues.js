@@ -21,13 +21,36 @@ const Venues = () => {
     fetchVenues();
   }, []);
 
+  const handleAdd = () => {
+    alert('Add Venue functionality - Coming soon!');
+  };
+
+  const handleView = (venue) => {
+    alert(`View venue: ${venue.name || venue.VenueName}`);
+  };
+
+  const handleEdit = (venue) => {
+    alert(`Edit venue: ${venue.name || venue.VenueName}`);
+  };
+
+  const handleDelete = async (venueId) => {
+    if (!window.confirm('Are you sure you want to delete this venue?')) return;
+    try {
+      await apiService.venues.delete(venueId);
+      setVenues(venues.filter(v => (v.id || v.VenueID) !== venueId));
+      alert('Venue deleted successfully');
+    } catch (error) {
+      alert('Failed to delete venue: ' + error.message);
+    }
+  };
+
   if (loading) return <div className="text-center py-8">Loading venues...</div>;
 
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Venues</h1>
-        <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+        <button onClick={handleAdd} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
           Add Venue
         </button>
       </div>
@@ -60,13 +83,13 @@ const Venues = () => {
               </div>
 
               <div className="flex gap-2 ml-4">
-                <button className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded">
+                <button onClick={() => handleView(venue)} className="text-blue-600 hover:text-blue-800 p-2 hover:bg-blue-50 rounded" title="View">
                   <Eye className="w-4 h-4" />
                 </button>
-                <button className="text-yellow-600 hover:text-yellow-800 p-2 hover:bg-yellow-50 rounded">
+                <button onClick={() => handleEdit(venue)} className="text-yellow-600 hover:text-yellow-800 p-2 hover:bg-yellow-50 rounded" title="Edit">
                   <Edit2 className="w-4 h-4" />
                 </button>
-                <button className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded">
+                <button onClick={() => handleDelete(venue.id || venue.VenueID)} className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded" title="Delete">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>

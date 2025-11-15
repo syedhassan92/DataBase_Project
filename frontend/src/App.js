@@ -24,6 +24,9 @@ import VenueManagement from './pages/VenueManagement';
 import Matches from './pages/Matches';
 import MatchDetails from './pages/MatchDetails';
 import MatchScheduling from './pages/MatchScheduling';
+import Coaches from './pages/Coaches';
+import Referees from './pages/Referees';
+import PlayerContracts from './pages/PlayerContracts';
 import PerformanceStats from './pages/PerformanceStats';
 import PlayerTransfers from './pages/PlayerTransfers';
 import ReportingSystem from './pages/ReportingSystem';
@@ -136,6 +139,27 @@ function AppContent() {
             </Layout>
           </ProtectedRoute>
         } />
+        <Route path="/admin/player-contracts" element={
+          <ProtectedRoute requiredRole="admin">
+            <Layout>
+              <PlayerContracts />
+            </Layout>
+          </ProtectedRoute>
+        } />
+               <Route path="/admin/coaches" element={
+                 <ProtectedRoute requiredRole="admin">
+                   <Layout>
+                     <Coaches />
+                   </Layout>
+                 </ProtectedRoute>
+               } />
+               <Route path="/admin/referees" element={
+                 <ProtectedRoute requiredRole="admin">
+                   <Layout>
+                     <Referees />
+                   </Layout>
+                 </ProtectedRoute>
+               } />
                <Route path="/admin/venues" element={
                  <ProtectedRoute requiredRole="admin">
                    <Layout>
@@ -268,6 +292,13 @@ function AppContent() {
           <ProtectedRoute>
             <Layout>
               <PlayerDetails />
+            </Layout>
+          </ProtectedRoute>
+        } />
+        <Route path="/coaches" element={
+          <ProtectedRoute>
+            <Layout>
+              <Coaches />
             </Layout>
           </ProtectedRoute>
         } />

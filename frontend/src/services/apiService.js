@@ -1,7 +1,6 @@
 import axios from 'axios';
-import { mockData, getItemById, getStatistics } from './mockDataService';
 
-// Create axios instance with base configuration (for future real API calls)
+// Create axios instance with base configuration
 const api = axios.create({
   baseURL: 'http://localhost:5000/api',
   timeout: 10000,
@@ -10,7 +9,7 @@ const api = axios.create({
   },
 });
 
-// Request interceptor for adding auth token (if needed)
+// Request interceptor for adding auth token
 api.interceptors.request.use(
   (config) => {
     // Add auth token to requests if available
@@ -31,7 +30,7 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
-    const errorMessage = error.response?.data?.message || error.message || 'An error occurred';
+    const errorMessage = error.response?.data?.error?.message || error.response?.data?.message || error.message || 'An error occurred';
     
     if (error.response?.status === 401) {
       localStorage.removeItem('authToken');
@@ -46,12 +45,6 @@ api.interceptors.response.use(
   }
 );
 
-// Helper function to simulate async API calls with delay
-const mockApiCall = async (data) => {
-  await new Promise(resolve => setTimeout(resolve, 300));
-  return data;
-};
-
 const apiService = {
   get: (endpoint, params = {}) => api.get(endpoint, { params }),
   post: (endpoint, data) => api.post(endpoint, data),
@@ -60,99 +53,144 @@ const apiService = {
   delete: (endpoint) => api.delete(endpoint),
   
   leagues: {
-    getAll: async (params = {}) => await mockApiCall(mockData.leagues),
-    getById: async (id) => await mockApiCall(getItemById('leagues', id)),
+    getAll: (params = {}) => api.get('/leagues', params),
+    getById: (id) => api.get(`/leagues/${id}`),
     create: (data) => api.post('/leagues', data),
     update: (id, data) => api.put(`/leagues/${id}`, data),
     delete: (id) => api.delete(`/leagues/${id}`),
-    getStandings: async (id) => await mockApiCall({ leagueId: id, standings: mockData.teams.filter(t => t.league === id) }),
-    getMatches: async (id) => await mockApiCall(mockData.matches.filter(m => m.tournament === id)),
-    getTopPerformers: async (id) => await mockApiCall(mockData.players.slice(0, 5)),
+    getStandings: (id) => api.get(`/stats/standings/${id}`),
+    getMatches: (id) => api.get('/matches', { leagueId: id }),
+    getTopPerformers: (id) => api.get('/stats/top-players', { limit: 5 }),
   },
   
   tournaments: {
-    getAll: async (params = {}) => await mockApiCall(mockData.tournaments),
-    getById: async (id) => await mockApiCall(getItemById('tournaments', id)),
+    getAll: (params = {}) => api.get('/tournaments', params),
+    getById: (id) => api.get(`/tournaments/${id}`),
     create: (data) => api.post('/tournaments', data),
     update: (id, data) => api.put(`/tournaments/${id}`, data),
     delete: (id) => api.delete(`/tournaments/${id}`),
-    getBracket: async (id) => await mockApiCall({ tournament: id, bracket: [] }),
-    getMatches: async (id) => await mockApiCall(mockData.matches),
+    getBracket: (id) => api.get(`/tournaments/${id}/bracket`),
+    getMatches: (id) => api.get('/matches', { tournamentId: id }),
   },
   
   teams: {
-    getAll: async (params = {}) => await mockApiCall(mockData.teams),
-    getById: async (id) => await mockApiCall(getItemById('teams', id)),
+    getAll: (params = {}) => api.get('/teams', params),
+    getById: (id) => api.get(`/teams/${id}`),
     create: (data) => api.post('/teams', data),
     update: (id, data) => api.put(`/teams/${id}`, data),
     delete: (id) => api.delete(`/teams/${id}`),
-    getPlayers: async (id) => await mockApiCall(mockData.players.filter(p => p.team === id)),
-    getMatches: async (id) => await mockApiCall(mockData.matches.filter(m => m.homeTeam === id || m.awayTeam === id)),
-    getStatistics: async (id) => {
-      const team = getItemById('teams', id);
-      return await mockApiCall(team ? { wins: team.wins, losses: team.losses, draws: team.draws } : {});
-    },
+    getPlayers: (id) => api.get('/players', { teamId: id }),
+    getMatches: (id) => api.get('/matches', { teamId: id }),
+    getStatistics: (id) => api.get(`/teams/${id}/stats`),
   },
   
   players: {
-    getAll: async (params = {}) => await mockApiCall(mockData.players),
-    getById: async (id) => await mockApiCall(getItemById('players', id)),
+    getAll: (params = {}) => api.get('/players', params),
+    getById: (id) => api.get(`/players/${id}`),
     create: (data) => api.post('/players', data),
     update: (id, data) => api.put(`/players/${id}`, data),
     delete: (id) => api.delete(`/players/${id}`),
-    getStatistics: async (id) => {
-      const player = getItemById('players', id);
-      return await mockApiCall(player ? { goals: player.goals, assists: player.assists, appearances: player.appearances } : {});
-    },
-    getMatchHistory: async (id) => await mockApiCall(mockData.matches.slice(0, 5)),
+    getStatistics: (id) => api.get(`/players/${id}/stats`),
+    getMatchHistory: (id) => api.get(`/players/${id}/matches`),
     transfer: (id, data) => api.post(`/players/${id}/transfer`, data),
   },
   
   venues: {
-    getAll: async (params = {}) => await mockApiCall(mockData.venues),
-    getById: async (id) => await mockApiCall(getItemById('venues', id)),
+    getAll: (params = {}) => api.get('/venues', params),
+    getById: (id) => api.get(`/venues/${id}`),
     create: (data) => api.post('/venues', data),
     update: (id, data) => api.put(`/venues/${id}`, data),
     delete: (id) => api.delete(`/venues/${id}`),
-    getMatches: async (id) => await mockApiCall(mockData.matches.filter(m => m.venue === id)),
-    getStatistics: async (id) => await mockApiCall({ venueId: id, totalMatches: 50, capacity: 74310 }),
+    getMatches: (id) => api.get('/matches', { venueId: id }),
+    getStatistics: (id) => api.get(`/venues/${id}/stats`),
   },
   
   matches: {
-    getAll: async (params = {}) => await mockApiCall(mockData.matches),
-    getById: async (id) => await mockApiCall(getItemById('matches', id)),
+    getAll: (params = {}) => api.get('/matches', params),
+    getById: (id) => api.get(`/matches/${id}`),
     create: (data) => api.post('/matches', data),
     update: (id, data) => api.put(`/matches/${id}`, data),
     delete: (id) => api.delete(`/matches/${id}`),
     updateResult: (id, data) => api.patch(`/matches/${id}/result`, data),
-    getLineup: async (id) => await mockApiCall({ matchId: id, homeLineup: [], awayLineup: [] }),
+    getLineup: (id) => api.get(`/matches/${id}/lineup`),
     updateLineup: (id, data) => api.put(`/matches/${id}/lineup`, data),
-    getEvents: async (id) => await mockApiCall([]),
+    getEvents: (id) => api.get(`/matches/${id}/events`),
     addEvent: (id, data) => api.post(`/matches/${id}/events`, data),
   },
   
   statistics: {
-    getOverall: async () => await mockApiCall(getStatistics()),
-    getLeague: async (leagueId) => await mockApiCall({ league: leagueId, stats: {} }),
-    getTournament: async (tournamentId) => await mockApiCall({ tournament: tournamentId, stats: {} }),
-    getTopScorers: async (params = {}) => await mockApiCall(
-      mockData.players.sort((a, b) => b.goals - a.goals).slice(0, 10)
-    ),
-    getTopAssists: async (params = {}) => await mockApiCall(
-      mockData.players.sort((a, b) => b.assists - a.assists).slice(0, 10)
-    ),
-    getBestRatings: async (params = {}) => await mockApiCall(mockData.players.slice(0, 10)),
-    getTeamComparison: async (teamIds) => await mockApiCall([]),
-    getPlayerComparison: async (playerIds) => await mockApiCall([]),
+    getOverall: () => api.get('/stats/dashboard'),
+    getLeague: (leagueId) => api.get(`/stats/league/${leagueId}`),
+    getTournament: (tournamentId) => api.get(`/stats/tournament/${tournamentId}`),
+    getTopScorers: (params = {}) => api.get('/stats/top-players', params),
+    getTopAssists: (params = {}) => api.get('/stats/top-players', { ...params, sortBy: 'assists' }),
+    getBestRatings: (params = {}) => api.get('/stats/top-players', params),
+    getTeamComparison: (teamIds) => api.get('/stats/team-comparison', { teamIds }),
+    getPlayerComparison: (playerIds) => api.get('/stats/player-comparison', { playerIds }),
   },
   
+  coaches: {
+    getAll: () => api.get('/coaches'),
+    getById: (id) => api.get(`/coaches/${id}`),
+    getByTeam: (teamId) => api.get('/coaches', { teamId }),
+    create: (data) => api.post('/coaches', data),
+    update: (id, data) => api.put(`/coaches/${id}`, data),
+    delete: (id) => api.delete(`/coaches/${id}`),
+  },
+
+  referees: {
+    getAll: () => api.get('/referees'),
+    getById: (id) => api.get(`/referees/${id}`),
+    getAvailable: () => api.get('/referees', { availabilityStatus: 'Available' }),
+    create: (data) => api.post('/referees', data),
+    update: (id, data) => api.put(`/referees/${id}`, data),
+    delete: (id) => api.delete(`/referees/${id}`),
+  },
+
+  playerStats: {
+    getAll: () => api.get('/stats/players'),
+    getByPlayer: (playerId) => api.get(`/stats/players/${playerId}`),
+    getTopRated: () => api.get('/stats/top-players', { limit: 10 }),
+  },
+
+  teamStats: {
+    getAll: () => api.get('/stats/teams'),
+    getByTeam: (teamId) => api.get(`/stats/teams/${teamId}`),
+    getByLeague: (leagueId) => api.get(`/stats/standings/${leagueId}`),
+  },
+
+  tournamentTeams: {
+    getAll: () => api.get('/tournaments/teams'),
+    getByTournament: (tournamentId) => api.get(`/tournaments/${tournamentId}/teams`),
+    getByTeam: (teamId) => api.get('/tournaments/teams', { teamId }),
+  },
+
   transfers: {
-    getAll: async () => await mockApiCall(mockData.playerTransfers),
-    getById: async (id) => await mockApiCall(getItemById('playerTransfers', id)),
+    getAll: () => api.get('/transfers'),
+    getById: (id) => api.get(`/transfers/${id}`),
+    getByPlayer: (playerId) => api.get('/transfers', { playerId }),
+    getByLeague: (leagueId) => api.get('/transfers', { leagueId }),
+    getRecent: (limit = 10) => api.get('/stats/recent-transfers', { limit }),
+  },
+
+  playerContracts: {
+    getAll: () => api.get('/player-contracts'),
+    getById: (id) => api.get(`/player-contracts/${id}`),
+    getByPlayer: (playerId) => api.get(`/player-contracts/player/${playerId}`),
+    getByTeam: (teamId) => api.get(`/player-contracts/team/${teamId}`),
+    create: (data) => api.post('/player-contracts', data),
+    update: (id, data) => api.put(`/player-contracts/${id}`, data),
+    delete: (id) => api.delete(`/player-contracts/${id}`),
+  },
+
+  // Backward compatibility
+  playerTransfers: {
+    getAll: () => api.get('/transfers'),
+    getById: (id) => api.get(`/transfers/${id}`),
   },
   
   reports: {
-    generate: async (type, params) => await mockApiCall({ type, params }),
+    generate: (type, params) => api.get(`/reports/${type}`, params),
     download: (type, params) => {
       return api.get(`/reports/${type}/download`, { 
         params,
@@ -162,10 +200,10 @@ const apiService = {
   },
   
   search: {
-    global: async (query) => await mockApiCall([]),
-    teams: async (query) => await mockApiCall(mockData.teams.filter(t => t.name.toLowerCase().includes(query.toLowerCase()))),
-    players: async (query) => await mockApiCall(mockData.players.filter(p => p.name.toLowerCase().includes(query.toLowerCase()))),
-    matches: async (query) => await mockApiCall(mockData.matches),
+    global: (query) => api.get('/search', { q: query }),
+    teams: (query) => api.get('/teams', { search: query }),
+    players: (query) => api.get('/players', { search: query }),
+    matches: (query) => api.get('/matches', { search: query }),
   },
 };
 

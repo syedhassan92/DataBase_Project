@@ -38,19 +38,26 @@ const UserLogin = () => {
         return;
       }
 
-      // TODO: Replace with actual API call
-      const response = await fetch('http://localhost:5000/api/auth/user-login', {
+      // API call to backend
+      const response = await fetch('http://localhost:5000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, role: 'user' }),
       });
 
       if (!response.ok) {
-        throw new Error('Login failed');
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Login failed');
       }
 
       const data = await response.json();
-      login(data.user, data.token);
+      const userData = {
+        id: data.userId,
+        name: data.username || data.name,
+        email: formData.email,
+        role: 'user',
+      };
+      login(userData, data.token);
       addNotification('Login successful!', 'success');
       navigate('/user/dashboard');
     } catch (error) {
