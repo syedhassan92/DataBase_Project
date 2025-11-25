@@ -26,7 +26,7 @@ async function compareSchema() {
       'PLAYER': ['PlayerID', 'PlayerName', 'PlayerRole'],
       'PLAYERTEAM': ['PlayerTeamID', 'PlayerID', 'TeamID', 'ContractDetails', 'StartDate', 'EndDate', 'IsCurrent'],
       '`MATCH`': ['MatchID', 'LeagueID', 'TournamentID', 'VenueID', 'RefereeID', 'MatchDate', 'MatchTime', 'Status'],
-      'MATCHSTATS': ['MatchStatsID', 'MatchID', 'TeamID', 'Score', 'Possession', 'Fouls'],
+      'MATCHSTATS': ['MatchStatsID', 'MatchID', 'TeamID', 'Score', 'Possession'],
       'VENUE': ['VenueID', 'VenueName', 'Location', 'Capacity', 'IsAvailable'],
       'TOURNAMENTTEAM': ['TournamentID', 'TeamID']
     };

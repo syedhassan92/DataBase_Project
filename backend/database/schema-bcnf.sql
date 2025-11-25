@@ -27,7 +27,8 @@ CREATE TABLE ADMIN (
 CREATE TABLE COACH (
     CoachID INT AUTO_INCREMENT PRIMARY KEY,
     CoachName VARCHAR(100) NOT NULL,
-    Contact VARCHAR(50) UNIQUE,
+    PhoneNumber VARCHAR(20) UNIQUE,
+    Email VARCHAR(100) UNIQUE,
     Experience INT DEFAULT 0,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -36,7 +37,8 @@ CREATE TABLE COACH (
 CREATE TABLE REFEREE (
     RefereeID INT AUTO_INCREMENT PRIMARY KEY,
     RefereeName VARCHAR(100) NOT NULL,
-    Contact VARCHAR(50),
+    PhoneNumber VARCHAR(20) UNIQUE,
+    Email VARCHAR(100) UNIQUE,
     AvailabilityStatus ENUM('Available', 'Unavailable') DEFAULT 'Available',
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -75,7 +77,9 @@ CREATE TABLE TEAM (
 );
 
 -- TEAMLEAGUE Table (New: Associates teams with leagues and coaches - BCNF)
--- Allows a team to participate in multiple leagues with different coaches
+-- A team can participate in multiple leagues, but each coach can only coach ONE team
+-- LeagueID is required (NOT NULL), CoachID is optional
+-- Ensures no duplicate team names within the same league
 CREATE TABLE TEAMLEAGUE (
     TeamLeagueID INT AUTO_INCREMENT PRIMARY KEY,
     TeamID INT NOT NULL,
@@ -85,7 +89,8 @@ CREATE TABLE TEAMLEAGUE (
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
     FOREIGN KEY (CoachID) REFERENCES COACH(CoachID) ON DELETE SET NULL,
-    UNIQUE KEY unique_team_league (TeamID, LeagueID)
+    UNIQUE KEY unique_team_league (TeamID, LeagueID),
+    UNIQUE KEY unique_coach (CoachID)
 );
 
 -- TEAMSTATS Table (BCNF: Natural key (LeagueID, TeamID) as primary key)
@@ -97,11 +102,27 @@ CREATE TABLE TEAMSTATS (
     Losses INT DEFAULT 0,
     Draws INT DEFAULT 0,
     Points INT DEFAULT 0,
+    GoalsFor INT DEFAULT 0,
+    GoalDifference INT DEFAULT 0,
+    MatchesPlayed INT DEFAULT 0,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (LeagueID, TeamID),
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE
 );
+
+-- Trigger to automatically populate TEAMSTATS when team is added to league
+DELIMITER //
+CREATE TRIGGER after_teamleague_insert
+AFTER INSERT ON TEAMLEAGUE
+FOR EACH ROW
+BEGIN
+    INSERT INTO TEAMSTATS 
+    (LeagueID, TeamID, Wins, Losses, Draws, Points, GoalsFor, GoalDifference, MatchesPlayed)
+    VALUES (NEW.LeagueID, NEW.TeamID, 0, 0, 0, 0, 0, 0, 0)
+    ON DUPLICATE KEY UPDATE LeagueID = NEW.LeagueID;
+END//
+DELIMITER ;
 
 -- TOURNAMENTTEAM Junction Table (BCNF: Natural key as primary key)
 CREATE TABLE TOURNAMENTTEAM (
@@ -196,7 +217,6 @@ CREATE TABLE MATCHSTATS (
     TeamID INT NOT NULL,
     Score INT DEFAULT 0,
     Possession INT DEFAULT 0,
-    Fouls INT DEFAULT 0,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (MatchID) REFERENCES `MATCH`(MatchID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
@@ -219,6 +239,67 @@ CREATE TABLE TRANSFER (
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
     CHECK (FromTeamID != ToTeamID)
 );
+
+-- Trigger to automatically update TEAMSTATS when a match is completed
+DELIMITER //
+CREATE TRIGGER after_match_update
+AFTER UPDATE ON `MATCH`
+FOR EACH ROW
+BEGIN
+    -- Only proceed if the match was just completed and has league data
+    IF NEW.Status = 'Completed' AND OLD.Status != 'Completed' AND NEW.LeagueID IS NOT NULL THEN
+        -- Update stats for Team1
+        UPDATE TEAMSTATS
+        SET 
+            MatchesPlayed = MatchesPlayed + 1,
+            GoalsFor = GoalsFor + NEW.Team1Score,
+            GoalDifference = GoalDifference + (NEW.Team1Score - NEW.Team2Score),
+            Wins = Wins + CASE 
+                WHEN NEW.Team1Score > NEW.Team2Score THEN 1 
+                ELSE 0 
+            END,
+            Draws = Draws + CASE 
+                WHEN NEW.Team1Score = NEW.Team2Score THEN 1 
+                ELSE 0 
+            END,
+            Losses = Losses + CASE 
+                WHEN NEW.Team1Score < NEW.Team2Score THEN 1 
+                ELSE 0 
+            END,
+            Points = Points + CASE 
+                WHEN NEW.Team1Score > NEW.Team2Score THEN 3 
+                WHEN NEW.Team1Score = NEW.Team2Score THEN 1 
+                ELSE 0 
+            END
+        WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team1ID;
+        
+        -- Update stats for Team2
+        UPDATE TEAMSTATS
+        SET 
+            MatchesPlayed = MatchesPlayed + 1,
+            GoalsFor = GoalsFor + NEW.Team2Score,
+            GoalDifference = GoalDifference + (NEW.Team2Score - NEW.Team1Score),
+            Wins = Wins + CASE 
+                WHEN NEW.Team2Score > NEW.Team1Score THEN 1 
+                ELSE 0 
+            END,
+            Draws = Draws + CASE 
+                WHEN NEW.Team2Score = NEW.Team1Score THEN 1 
+                ELSE 0 
+            END,
+            Losses = Losses + CASE 
+                WHEN NEW.Team2Score < NEW.Team1Score THEN 1 
+                ELSE 0 
+            END,
+            Points = Points + CASE 
+                WHEN NEW.Team2Score > NEW.Team1Score THEN 3 
+                WHEN NEW.Team2Score = NEW.Team1Score THEN 1 
+                ELSE 0 
+            END
+        WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team2ID;
+    END IF;
+END//
+DELIMITER ;
 
 -- Insert default admin user
 INSERT INTO USERACCOUNT (Username, Password, Role) VALUES ('admin', 'admin123', 'Admin');

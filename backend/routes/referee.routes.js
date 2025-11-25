@@ -26,10 +26,10 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', adminAuth, async (req, res) => {
   try {
-    const { refereeId, refereeName, contact, availabilityStatus } = req.body;
+    const { refereeId, refereeName, phoneNumber, email, availabilityStatus } = req.body;
     await db.query(
-      'INSERT INTO REFEREE (RefereeID, RefereeName, Contact, AvailabilityStatus) VALUES (?, ?, ?, ?)',
-      [refereeId, refereeName, contact || null, availabilityStatus || 'Available']
+      'INSERT INTO REFEREE (RefereeID, RefereeName, PhoneNumber, Email, AvailabilityStatus) VALUES (?, ?, ?, ?, ?)',
+      [refereeId, refereeName, phoneNumber || null, email || null, availabilityStatus || 'Available']
     );
     res.status(201).json({ message: 'Referee created successfully', refereeId });
   } catch (error) {
@@ -39,10 +39,10 @@ router.post('/', adminAuth, async (req, res) => {
 
 router.put('/:id', adminAuth, async (req, res) => {
   try {
-    const { refereeName, contact, availabilityStatus } = req.body;
+    const { refereeName, phoneNumber, email, availabilityStatus } = req.body;
     await db.query(
-      'UPDATE REFEREE SET RefereeName = ?, Contact = ?, AvailabilityStatus = ? WHERE RefereeID = ?',
-      [refereeName, contact || null, availabilityStatus || 'Available', req.params.id]
+      'UPDATE REFEREE SET RefereeName = ?, PhoneNumber = ?, Email = ?, AvailabilityStatus = ? WHERE RefereeID = ?',
+      [refereeName, phoneNumber || null, email || null, availabilityStatus || 'Available', req.params.id]
     );
     res.json({ message: 'Referee updated successfully' });
   } catch (error) {

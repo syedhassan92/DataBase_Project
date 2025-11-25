@@ -4,6 +4,8 @@ import apiService from '../services/apiService';
 
 const Teams = () => {
   const [teams, setTeams] = useState([]);
+  const [coaches, setCoaches] = useState([]);
+  const [leagues, setLeagues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
@@ -14,37 +16,67 @@ const Teams = () => {
   });
 
   useEffect(() => {
-    fetchTeams();
+    fetchData();
   }, []);
 
-  const fetchTeams = async () => {
+  const fetchData = async () => {
     try {
-      const data = await apiService.teams.getAll();
-      setTeams(data);
+      const [teamsData, leaguesData] = await Promise.all([
+        apiService.teams.getAll(),
+        apiService.leagues.getAll()
+      ]);
+      setTeams(teamsData);
+      setLeagues(leaguesData);
     } catch (error) {
-      console.error('Error fetching teams:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAdd = () => {
+  const fetchAvailableCoaches = async (currentCoachId = null) => {
+    try {
+      // Fetch unassigned coaches
+      const unassignedCoaches = await apiService.get('/coaches', { unassigned: 'true' });
+      
+      // If editing and team has a coach, include that coach in the list
+      if (currentCoachId) {
+        const currentCoach = await apiService.coaches.getById(currentCoachId);
+        // Add current coach if not already in the list
+        const coachExists = unassignedCoaches.some(c => c.CoachID === currentCoachId);
+        if (!coachExists) {
+          setCoaches([currentCoach, ...unassignedCoaches]);
+        } else {
+          setCoaches(unassignedCoaches);
+        }
+      } else {
+        setCoaches(unassignedCoaches);
+      }
+    } catch (error) {
+      console.error('Error fetching coaches:', error);
+      setCoaches([]);
+    }
+  };
+
+  const handleAdd = async () => {
     setEditingTeam(null);
     setFormData({
       teamName: '',
       leagueId: '',
       coachId: ''
     });
+    await fetchAvailableCoaches();
     setShowModal(true);
   };
 
-  const handleEdit = (team) => {
+  const handleEdit = async (team) => {
     setEditingTeam(team);
     setFormData({
       teamName: team.TeamName,
       leagueId: team.LeagueID || '',
       coachId: team.CoachID || ''
     });
+    await fetchAvailableCoaches(team.CoachID);
     setShowModal(true);
   };
 
@@ -53,7 +85,7 @@ const Teams = () => {
     
     try {
       await apiService.teams.delete(teamId);
-      fetchTeams();
+      fetchData();
       alert('Team deleted successfully');
     } catch (error) {
       alert('Failed to delete team: ' + error.message);
@@ -63,10 +95,16 @@ const Teams = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validate required fields (only teamName and leagueId are required)
+    if (!formData.teamName || !formData.leagueId) {
+      alert('Team Name and League are required fields');
+      return;
+    }
+    
     try {
       const payload = {
         teamName: formData.teamName,
-        leagueId: formData.leagueId || null,
+        leagueId: formData.leagueId,
         coachId: formData.coachId || null
       };
 
@@ -79,7 +117,7 @@ const Teams = () => {
       }
       
       setShowModal(false);
-      fetchTeams();
+      fetchData();
     } catch (error) {
       alert('Failed to save team: ' + error.message);
     }
@@ -156,25 +194,38 @@ const Teams = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">League ID (Optional)</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">League *</label>
+                  <select
                     value={formData.leagueId}
                     onChange={(e) => setFormData({...formData, leagueId: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                    placeholder="e.g., L001"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                    required
+                  >
+                    <option value="">Select a league</option>
+                    {leagues.map(league => (
+                      <option key={league.LeagueID} value={league.LeagueID}>
+                        {league.LeagueName} (ID: {league.LeagueID})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Required: Every team must belong to a league</p>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Coach ID (Optional)</label>
-                  <input
-                    type="text"
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Coach (Optional)</label>
+                  <select
                     value={formData.coachId}
                     onChange={(e) => setFormData({...formData, coachId: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-                    placeholder="e.g., C001"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                  >
+                    <option value="">Select a coach</option>
+                    {coaches.map(coach => (
+                      <option key={coach.CoachID} value={coach.CoachID}>
+                        {coach.CoachName} - {coach.Experience} years exp (ID: {coach.CoachID})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">⚠️ Each coach can only coach one team</p>
                 </div>
 
               <div className="flex gap-3 mt-6">

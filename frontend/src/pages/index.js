@@ -6,6 +6,7 @@ export const AdminDashboard = () => <PageTemplate title="Admin Dashboard" descri
 export const Dashboard = () => <PageTemplate title="Dashboard" description="Main dashboard" />;
 export const Leagues = () => <PageTemplate title="Leagues" description="Manage leagues" />;
 export const LeagueDetails = () => <PageTemplate title="League Details" description="View league details" />;
+export { default as LeagueTable } from './LeagueTable';
 export const Tournaments = () => <PageTemplate title="Tournaments" description="Manage tournaments" />;
 export const TournamentDetails = () => <PageTemplate title="Tournament Details" description="View tournament details" />;
 export const Teams = () => <PageTemplate title="Teams" description="Manage teams" />;

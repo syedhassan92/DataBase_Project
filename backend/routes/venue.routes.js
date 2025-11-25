@@ -26,12 +26,12 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', adminAuth, async (req, res) => {
   try {
-    const { venueId, venueName, location, capacity, isAvailable } = req.body;
-    await db.query(
-      'INSERT INTO VENUE (VenueID, VenueName, Location, Capacity, IsAvailable) VALUES (?, ?, ?, ?, ?)',
-      [venueId, venueName, location || null, capacity || null, isAvailable !== undefined ? isAvailable : true]
+    const { venueName, location, capacity, isAvailable } = req.body;
+    const [result] = await db.query(
+      'INSERT INTO VENUE (VenueName, Location, Capacity, IsAvailable) VALUES (?, ?, ?, ?)',
+      [venueName, location || null, capacity || null, isAvailable !== undefined ? isAvailable : true]
     );
-    res.status(201).json({ message: 'Venue created successfully', venueId });
+    res.status(201).json({ message: 'Venue created successfully', venueId: result.insertId });
   } catch (error) {
     res.status(500).json({ error: { message: 'Failed to create venue', status: 500 } });
   }

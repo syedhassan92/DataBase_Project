@@ -11,7 +11,8 @@ const Coaches = () => {
   const [editingCoach, setEditingCoach] = useState(null);
   const [formData, setFormData] = useState({
     coachName: '',
-    contact: '',
+    phoneNumber: '',
+    email: '',
     experience: '',
   });
 
@@ -38,7 +39,8 @@ const Coaches = () => {
     setEditingCoach(null);
     setFormData({
       coachName: '',
-      contact: '',
+      phoneNumber: '',
+      email: '',
       experience: '',
     });
     setShowModal(true);
@@ -48,7 +50,8 @@ const Coaches = () => {
     setEditingCoach(coach);
     setFormData({
       coachName: coach.CoachName,
-      contact: coach.Contact,
+      phoneNumber: coach.PhoneNumber || '',
+      email: coach.Email || '',
       experience: coach.Experience,
     });
     setShowModal(true);
@@ -72,7 +75,8 @@ const Coaches = () => {
     try {
       const coachData = {
         coachName: formData.coachName,
-        contact: formData.contact,
+        phoneNumber: formData.phoneNumber,
+        email: formData.email,
         experience: parseInt(formData.experience) || 0,
       };
 
@@ -92,12 +96,18 @@ const Coaches = () => {
   };
 
   const getCoachTeams = (coachId) => {
-    return teams.filter(team => team.CoachID === coachId);
+    return teams.filter(team => {
+      // CoachID might be a comma-separated string from GROUP_CONCAT
+      if (!team.CoachID) return false;
+      const coachIds = team.CoachID.toString().split(',').map(id => id.trim());
+      return coachIds.includes(coachId.toString());
+    });
   };
 
   const filteredCoaches = coaches.filter(coach =>
     coach.CoachName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    coach.Contact?.toLowerCase().includes(searchTerm.toLowerCase())
+    coach.PhoneNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    coach.Email?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -163,13 +173,19 @@ const Coaches = () => {
               <div className="space-y-2 mb-4">
                 <div className="flex items-center gap-2 text-sm text-gray-700">
                   <Phone className="w-4 h-4 text-gray-400" />
-                  <span>{coach.Contact}</span>
+                  <span>{coach.PhoneNumber || 'N/A'}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <span className="truncate">{coach.Email || 'N/A'}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-700">
                   <Users className="w-4 h-4 text-gray-400" />
                   <span>
                     {coachTeams.length > 0 
-                      ? coachTeams.map(t => t.TeamName).join(', ')
+                      ? `Team: ${coachTeams.map(t => t.TeamName).join(', ')}`
                       : 'No team assigned'}
                   </span>
                 </div>
@@ -232,16 +248,31 @@ const Coaches = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Contact *
+                    Phone Number
                   </label>
                   <input
-                    type="text"
-                    required
-                    value={formData.contact}
-                    onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
+                    type="tel"
+                    value={formData.phoneNumber}
+                    onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-gray-900"
-                    placeholder="+44 123 456 7890"
+                    placeholder="+1-555-0123"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Must be unique if provided</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-gray-900"
+                    placeholder="coach@example.com"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Must be unique</p>
                 </div>
 
                 <div>

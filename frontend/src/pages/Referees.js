@@ -11,7 +11,8 @@ const Referees = () => {
   const [editingReferee, setEditingReferee] = useState(null);
   const [formData, setFormData] = useState({
     refereeName: '',
-    contact: '',
+    phoneNumber: '',
+    email: '',
     availabilityStatus: 'Available'
   });
 
@@ -34,7 +35,8 @@ const Referees = () => {
     setEditingReferee(null);
     setFormData({
       refereeName: '',
-      contact: '',
+      phoneNumber: '',
+      email: '',
       availabilityStatus: 'Available'
     });
     setShowModal(true);
@@ -44,7 +46,8 @@ const Referees = () => {
     setEditingReferee(referee);
     setFormData({
       refereeName: referee.RefereeName || referee.refereeName || '',
-      contact: referee.Contact || referee.contact || '',
+      phoneNumber: referee.PhoneNumber || referee.phoneNumber || '',
+      email: referee.Email || referee.email || '',
       availabilityStatus: referee.AvailabilityStatus || referee.availabilityStatus || 'Available'
     });
     setShowModal(true);
@@ -86,7 +89,8 @@ const Referees = () => {
 
   const filteredReferees = referees.filter(referee => {
     const matchesSearch = (referee.RefereeName || referee.refereeName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (referee.Contact || referee.contact || '').toLowerCase().includes(searchTerm.toLowerCase());
+                         (referee.PhoneNumber || referee.phoneNumber || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (referee.Email || referee.email || '').toLowerCase().includes(searchTerm.toLowerCase());
     const status = referee.AvailabilityStatus || referee.availabilityStatus;
     const matchesFilter = filterStatus === 'all' || status === filterStatus;
     return matchesSearch && matchesFilter;
@@ -146,7 +150,8 @@ const Referees = () => {
         {filteredReferees.map((referee) => {
           const id = referee.RefereeID || referee.id;
           const name = referee.RefereeName || referee.refereeName;
-          const contact = referee.Contact || referee.contact;
+          const phoneNumber = referee.PhoneNumber || referee.phoneNumber;
+          const email = referee.Email || referee.email;
           const status = referee.AvailabilityStatus || referee.availabilityStatus;
           
           return (
@@ -154,7 +159,8 @@ const Referees = () => {
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
                   <h3 className="text-xl font-bold text-gray-900 mb-2">{name}</h3>
-                  <p className="text-gray-600 text-sm">{contact}</p>
+                  {phoneNumber && <p className="text-gray-600 text-sm">📞 {phoneNumber}</p>}
+                  {email && <p className="text-gray-600 text-sm">📧 {email}</p>}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -222,14 +228,27 @@ const Referees = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Contact
+                    Phone Number
                   </label>
                   <input
                     type="text"
-                    value={formData.contact}
-                    onChange={(e) => setFormData({...formData, contact: e.target.value})}
+                    value={formData.phoneNumber}
+                    onChange={(e) => setFormData({...formData, phoneNumber: e.target.value})}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    placeholder="Email or phone number"
+                    placeholder="Enter phone number"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    placeholder="Enter email address"
                   />
                 </div>
 

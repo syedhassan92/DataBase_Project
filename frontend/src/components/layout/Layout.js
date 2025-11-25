@@ -51,6 +51,7 @@ const Layout = ({ children }) => {
               </div>
               <div className="pt-4 border-t">
                 <h3 className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Analytics</h3>
+                <NavLink to="/admin/league-table" label="League Table" isActive={isActive("/admin/league-table")} />
                 <NavLink to="/admin/statistics" label="Statistics" isActive={isActive("/admin/statistics")} />
                 <NavLink to="/admin/reports" label="Reports" isActive={isActive("/admin/reports")} />
               </div>
@@ -138,6 +139,7 @@ const Layout = ({ children }) => {
                   <MobileNavLink to="/admin/venues" label="Venues" isActive={isActive("/admin/venues")} />
                   <MobileNavLink to="/admin/matches" label="Matches" isActive={isActive("/admin/matches")} />
                   <h3 className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase mt-3">Analytics</h3>
+                  <MobileNavLink to="/admin/league-table" label="League Table" isActive={isActive("/admin/league-table")} />
                   <MobileNavLink to="/admin/statistics" label="Statistics" isActive={isActive("/admin/statistics")} />
                   <MobileNavLink to="/admin/reports" label="Reports" isActive={isActive("/admin/reports")} />
                 </>

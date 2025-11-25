@@ -7,11 +7,19 @@ const Matches = () => {
   const [teams, setTeams] = useState([]);
   const [venues, setVenues] = useState([]);
   const [referees, setReferees] = useState([]);
+  const [allVenues, setAllVenues] = useState([]);
+  const [allReferees, setAllReferees] = useState([]);
   const [leagues, setLeagues] = useState([]);
   const [tournaments, setTournaments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showPlayerStatsModal, setShowPlayerStatsModal] = useState(false);
   const [editingMatch, setEditingMatch] = useState(null);
+  const [team1Players, setTeam1Players] = useState([]);
+  const [team2Players, setTeam2Players] = useState([]);
+  const [playerStats, setPlayerStats] = useState([]);
+  const [matchScores, setMatchScores] = useState({ team1Score: 0, team2Score: 0 });
   const [formData, setFormData] = useState({
     team1Id: '',
     team2Id: '',
@@ -22,6 +30,14 @@ const Matches = () => {
     matchDate: '',
     matchTime: '',
     status: 'Scheduled'
+  });
+  const [statsData, setStatsData] = useState({
+    team1Score: '',
+    team2Score: '',
+    team1Possession: '',
+    team2Possession: '',
+    winnerTeamId: '',
+    highlights: ''
   });
 
   useEffect(() => {
@@ -38,8 +54,13 @@ const Matches = () => {
         apiService.leagues.getAll(),
         apiService.tournaments.getAll()
       ]);
+      console.log('Teams data:', teamsData);
+      console.log('Leagues data:', leaguesData);
+      console.log('Tournaments data:', tournamentsData);
       setMatches(matchesData);
       setTeams(teamsData);
+      setAllVenues(venuesData);
+      setAllReferees(refereesData);
       setVenues(venuesData);
       setReferees(refereesData);
       setLeagues(leaguesData);
@@ -48,6 +69,29 @@ const Matches = () => {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchAvailableVenuesAndReferees = async (matchDate, matchTime, excludeMatchId = null) => {
+    if (!matchDate || !matchTime) {
+      setVenues(allVenues);
+      setReferees(allReferees);
+      return;
+    }
+
+    try {
+      const params = { matchDate, matchTime };
+      if (excludeMatchId) params.excludeMatchId = excludeMatchId;
+
+      const [availableVenues, availableReferees] = await Promise.all([
+        apiService.get('/matches/available/venues', params),
+        apiService.get('/matches/available/referees', params)
+      ]);
+      
+      setVenues(availableVenues);
+      setReferees(availableReferees);
+    } catch (error) {
+      console.error('Error fetching available venues/referees:', error);
     }
   };
 
@@ -69,6 +113,15 @@ const Matches = () => {
 
   const handleEdit = (match) => {
     setEditingMatch(match);
+    let matchDate = match.MatchDate || match.matchDate || '';
+    const matchTime = match.MatchTime || match.matchTime || '';
+    
+    // Format date to YYYY-MM-DD for input field
+    if (matchDate) {
+      const dateObj = new Date(matchDate);
+      matchDate = dateObj.toISOString().split('T')[0];
+    }
+    
     setFormData({
       team1Id: match.Team1ID || match.team1Id || '',
       team2Id: match.Team2ID || match.team2Id || '',
@@ -76,11 +129,29 @@ const Matches = () => {
       tournamentId: match.TournamentID || match.tournamentId || '',
       venueId: match.VenueID || match.venueId || '',
       refereeId: match.RefereeID || match.refereeId || '',
-      matchDate: match.MatchDate || match.matchDate || '',
-      matchTime: match.MatchTime || match.matchTime || '',
+      matchDate: matchDate,
+      matchTime: matchTime,
       status: match.Status || match.status || 'Scheduled'
     });
+    // Don't fetch available venues/referees when just opening edit
+    // Let them remain as is, user can change date/time to trigger refresh if needed
+    setVenues(allVenues);
+    setReferees(allReferees);
     setShowModal(true);
+  };
+
+  const handleDateTimeChange = (field, value) => {
+    const newFormData = { ...formData, [field]: value };
+    setFormData(newFormData);
+    
+    // Fetch available venues and referees when both date and time are set
+    if (newFormData.matchDate && newFormData.matchTime) {
+      fetchAvailableVenuesAndReferees(
+        newFormData.matchDate, 
+        newFormData.matchTime,
+        editingMatch ? (editingMatch.MatchID || editingMatch.id) : null
+      );
+    }
   };
 
   const handleDelete = async (matchId) => {
@@ -96,18 +167,92 @@ const Matches = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // If changing status to Completed, show stats modal
+    if (editingMatch && formData.status === 'Completed' && 
+        (editingMatch.Status !== 'Completed' || !editingMatch.Team1Score)) {
+      setShowModal(false);
+      setShowStatsModal(true);
+      return;
+    }
+    
     try {
+      // Clean the form data - convert empty strings to null for optional fields
+      const cleanedData = {
+        ...formData,
+        leagueId: formData.leagueId || null,
+        tournamentId: formData.tournamentId || null,
+        venueId: formData.venueId || null,
+        refereeId: formData.refereeId || null
+      };
+      
       if (editingMatch) {
-        await apiService.matches.update(editingMatch.MatchID || editingMatch.id, formData);
+        await apiService.matches.update(editingMatch.MatchID || editingMatch.id, cleanedData);
         alert('Match updated successfully');
       } else {
-        await apiService.matches.create(formData);
+        await apiService.matches.create(cleanedData);
         alert('Match scheduled successfully');
       }
       setShowModal(false);
       fetchData();
     } catch (error) {
       alert('Failed to save match: ' + error.message);
+    }
+  };
+
+  const handleStatsSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const team1Poss = statsData.team1Possession ? parseInt(statsData.team1Possession) : 0;
+      const team2Poss = statsData.team2Possession ? parseInt(statsData.team2Possession) : 0;
+      
+      // Validate possession sum
+      if (team1Poss + team2Poss > 100) {
+        alert('Error: Total possession cannot exceed 100%. Please adjust the possession values.');
+        return;
+      }
+      
+      const updateData = {
+        ...formData,
+        team1Score: parseInt(statsData.team1Score),
+        team2Score: parseInt(statsData.team2Score),
+        team1Possession: team1Poss,
+        team2Possession: team2Poss,
+        winnerTeamId: statsData.winnerTeamId || null,
+        highlights: statsData.highlights || null,
+        status: 'Completed'
+      };
+      
+      await apiService.matches.update(editingMatch.MatchID || editingMatch.id, updateData);
+      
+      // Try to fetch players from both teams for player stats
+      try {
+        const [team1PlayersData, team2PlayersData] = await Promise.all([
+          apiService.get(`/players?teamId=${formData.team1Id}`),
+          apiService.get(`/players?teamId=${formData.team2Id}`)
+        ]);
+        
+        setTeam1Players(team1PlayersData);
+        setTeam2Players(team2PlayersData);
+        setPlayerStats([]);
+        setMatchScores({ 
+          team1Score: parseInt(statsData.team1Score), 
+          team2Score: parseInt(statsData.team2Score) 
+        });
+        
+        // Show player stats modal
+        setShowStatsModal(false);
+        setShowPlayerStatsModal(true);
+      } catch (playerError) {
+        // If player fetch fails, just complete without player stats
+        console.error('Could not fetch players:', playerError);
+        alert('Match completed successfully! (Player stats not available)');
+        setShowStatsModal(false);
+        setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
+        fetchData();
+      }
+    } catch (error) {
+      alert('Failed to update match stats: ' + error.message);
     }
   };
 
@@ -127,41 +272,47 @@ const Matches = () => {
       </div>
 
       <div className="space-y-4">
-        {matches.map(match => (
-          <div key={match.id} className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
+        {matches.map(match => {
+          const matchDate = match.MatchDate || match.date;
+          const matchTime = match.MatchTime || match.time;
+          const formattedDate = matchDate ? new Date(matchDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'TBD';
+          const formattedTime = matchTime ? matchTime.substring(0, 5) : 'TBD';
+          
+          return (
+          <div key={match.MatchID || match.id} className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <p className="text-sm text-gray-600 mb-2">
-                  {match.date} at {match.time} • {match.status.toUpperCase()}
+                  {formattedDate} at {formattedTime} • {(match.Status || match.status || 'Scheduled').toUpperCase()}
                 </p>
                 
                 <div className="flex items-center gap-6">
                   <div className="text-center flex-1">
-                    <p className="font-semibold text-gray-900 text-lg">{match.homeTeamName}</p>
-                    {match.status === 'completed' && (
-                      <p className="text-2xl font-bold text-blue-600 mt-2">{match.homeScore}</p>
+                    <p className="font-semibold text-gray-900 text-lg">{match.Team1Name || match.homeTeamName || 'TBD'}</p>
+                    {(match.Status === 'Completed' || match.status === 'completed') && (
+                      <p className="text-2xl font-bold text-blue-600 mt-2">{match.Team1Score || match.homeScore || 0}</p>
                     )}
                   </div>
 
                   <div className="text-center">
                     <p className="text-gray-600">vs</p>
-                    {match.status === 'completed' && (
+                    {(match.Status === 'Completed' || match.status === 'completed') && (
                       <p className="text-sm text-gray-600 mt-2">Final</p>
                     )}
-                    {match.status === 'scheduled' && (
+                    {(match.Status === 'Scheduled' || match.status === 'scheduled') && (
                       <p className="text-sm text-gray-600 mt-2">-</p>
                     )}
                   </div>
 
                   <div className="text-center flex-1">
-                    <p className="font-semibold text-gray-900 text-lg">{match.awayTeamName}</p>
-                    {match.status === 'completed' && (
-                      <p className="text-2xl font-bold text-red-600 mt-2">{match.awayScore}</p>
+                    <p className="font-semibold text-gray-900 text-lg">{match.Team2Name || match.awayTeamName || 'TBD'}</p>
+                    {(match.Status === 'Completed' || match.status === 'completed') && (
+                      <p className="text-2xl font-bold text-red-600 mt-2">{match.Team2Score || match.awayScore || 0}</p>
                     )}
                   </div>
                 </div>
 
-                <p className="text-sm text-gray-600 mt-3">Venue: {match.venue} • Ref: {match.referee}</p>
+                <p className="text-sm text-gray-600 mt-3">Venue: {match.VenueName || match.venue || 'TBD'} • Ref: {match.RefereeName || match.referee || 'TBD'}</p>
               </div>
 
               <div className="flex gap-2 ml-6">
@@ -182,7 +333,8 @@ const Matches = () => {
               </div>
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* Schedule/Edit Match Modal */}
@@ -318,7 +470,7 @@ const Matches = () => {
                     type="date"
                     required
                     value={formData.matchDate}
-                    onChange={(e) => setFormData({...formData, matchDate: e.target.value})}
+                    onChange={(e) => handleDateTimeChange('matchDate', e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                   />
                 </div>
@@ -331,9 +483,10 @@ const Matches = () => {
                     type="time"
                     required
                     value={formData.matchTime}
-                    onChange={(e) => setFormData({...formData, matchTime: e.target.value})}
+                    onChange={(e) => handleDateTimeChange('matchTime', e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                   />
+                  <p className="text-xs text-gray-500 mt-1">Available venues and referees will update based on selected date/time</p>
                 </div>
 
                 <div>
@@ -370,6 +523,353 @@ const Matches = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Match Stats Modal */}
+      {showStatsModal && editingMatch && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+              <h2 className="text-2xl font-bold text-gray-900">Complete Match Stats</h2>
+              <button 
+                onClick={() => {
+                  setShowStatsModal(false);
+                  setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleStatsSubmit} className="p-6">
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm font-semibold text-blue-900">
+                  {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} vs {teams.find(t => t.TeamID === formData.team2Id)?.TeamName}
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  {formData.matchDate && new Date(formData.matchDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} Score *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={statsData.team1Score}
+                    onChange={(e) => setStatsData({...statsData, team1Score: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {teams.find(t => t.TeamID === formData.team2Id)?.TeamName} Score *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={statsData.team2Score}
+                    onChange={(e) => setStatsData({...statsData, team2Score: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} Possession (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={statsData.team1Possession}
+                    onChange={(e) => setStatsData({...statsData, team1Possession: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {teams.find(t => t.TeamID === formData.team2Id)?.TeamName} Possession (%)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={statsData.team2Possession}
+                    onChange={(e) => setStatsData({...statsData, team2Possession: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Winner Team
+                  </label>
+                  <select
+                    value={statsData.winnerTeamId}
+                    onChange={(e) => setStatsData({...statsData, winnerTeamId: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                  >
+                    <option value="">Draw / No Winner</option>
+                    <option value={formData.team1Id}>{teams.find(t => t.TeamID === formData.team1Id)?.TeamName}</option>
+                    <option value={formData.team2Id}>{teams.find(t => t.TeamID === formData.team2Id)?.TeamName}</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Match Highlights
+                  </label>
+                  <textarea
+                    value={statsData.highlights}
+                    onChange={(e) => setStatsData({...statsData, highlights: e.target.value})}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    rows="4"
+                    placeholder="Enter match highlights, key moments, or summary..."
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowStatsModal(false);
+                    setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                >
+                  Complete Match
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Player Stats Modal */}
+      {showPlayerStatsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+              <h2 className="text-2xl font-bold text-gray-900">Enter Player Statistics</h2>
+              <button 
+                onClick={() => {
+                  setShowPlayerStatsModal(false);
+                  setPlayerStats([]);
+                  setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
+                  fetchData();
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm font-semibold text-yellow-900 mb-2">
+                  Match Score: {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} {matchScores.team1Score} - {matchScores.team2Score} {teams.find(t => t.TeamID === formData.team2Id)?.TeamName}
+                </p>
+                <p className="text-xs text-yellow-700">
+                  <strong>Important:</strong> Total goals for each team cannot exceed their score. Total assists must equal total goals (every goal needs an assist).
+                </p>
+              </div>
+
+              {/* Player Stats Entries */}
+              <div className="space-y-4 mb-6">
+                {playerStats.map((stat, index) => (
+                  <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Player *
+                        </label>
+                        <select
+                          value={stat.playerId}
+                          onChange={(e) => {
+                            const newStats = [...playerStats];
+                            newStats[index].playerId = e.target.value;
+                            setPlayerStats(newStats);
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                        >
+                          <option value="">Select Player</option>
+                          <optgroup label={teams.find(t => t.TeamID === formData.team1Id)?.TeamName}>
+                            {team1Players.map(player => (
+                              <option key={player.PlayerID} value={player.PlayerID}>
+                                {player.PlayerName}
+                              </option>
+                            ))}
+                          </optgroup>
+                          <optgroup label={teams.find(t => t.TeamID === formData.team2Id)?.TeamName}>
+                            {team2Players.map(player => (
+                              <option key={player.PlayerID} value={player.PlayerID}>
+                                {player.PlayerName}
+                              </option>
+                            ))}
+                          </optgroup>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Goals
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={stat.goals}
+                          onChange={(e) => {
+                            const newStats = [...playerStats];
+                            newStats[index].goals = e.target.value;
+                            setPlayerStats(newStats);
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Assists
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={stat.assists}
+                          onChange={(e) => {
+                            const newStats = [...playerStats];
+                            newStats[index].assists = e.target.value;
+                            setPlayerStats(newStats);
+                          }}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                          placeholder="0"
+                        />
+                      </div>
+
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newStats = playerStats.filter((_, i) => i !== index);
+                            setPlayerStats(newStats);
+                          }}
+                          className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Add Player Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setPlayerStats([...playerStats, { playerId: '', goals: 0, assists: 0 }]);
+                }}
+                className="w-full px-4 py-2 border-2 border-dashed border-gray-300 text-gray-600 rounded-lg hover:border-blue-500 hover:text-blue-500 transition"
+              >
+                + Add Player Stats
+              </button>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      // Filter out empty entries
+                      const validStats = playerStats.filter(s => s.playerId && (parseInt(s.goals) > 0 || parseInt(s.assists) > 0));
+                      
+                      if (validStats.length === 0) {
+                        alert('Please add at least one player with goals or assists. Player stats are required to complete the match.');
+                        return;
+                      }
+                      
+                      // Calculate totals for validation
+                      let totalGoals = 0;
+                      let totalAssists = 0;
+                      let team1Goals = 0;
+                      let team2Goals = 0;
+                      
+                      validStats.forEach(stat => {
+                        const goals = parseInt(stat.goals) || 0;
+                        const assists = parseInt(stat.assists) || 0;
+                        totalGoals += goals;
+                        totalAssists += assists;
+                        
+                        // Check which team this player belongs to
+                        const isTeam1Player = team1Players.some(p => p.PlayerID === parseInt(stat.playerId));
+                        if (isTeam1Player) {
+                          team1Goals += goals;
+                        } else {
+                          team2Goals += goals;
+                        }
+                      });
+                      
+                      // Validation 1: Total goals for each team should not exceed team score
+                      if (team1Goals > matchScores.team1Score) {
+                        alert(`Error: Total goals for ${teams.find(t => t.TeamID === formData.team1Id)?.TeamName} (${team1Goals}) exceeds their team score (${matchScores.team1Score}). Please adjust the player goals.`);
+                        return;
+                      }
+                      
+                      if (team2Goals > matchScores.team2Score) {
+                        alert(`Error: Total goals for ${teams.find(t => t.TeamID === formData.team2Id)?.TeamName} (${team2Goals}) exceeds their team score (${matchScores.team2Score}). Please adjust the player goals.`);
+                        return;
+                      }
+                      
+                      // Validation 2: Total assists should equal total goals (every goal must have an assist)
+                      if (totalAssists !== totalGoals) {
+                        alert(`Error: Total assists (${totalAssists}) must equal total goals (${totalGoals}). Every goal should have exactly one assist.`);
+                        return;
+                      }
+                      
+                      // Save player stats
+                      await apiService.post('/stats/players', {
+                        matchId: editingMatch.MatchID || editingMatch.id,
+                        playerStats: validStats
+                      });
+                      
+                      alert('Match completed and player statistics saved successfully!');
+                      setShowPlayerStatsModal(false);
+                      setPlayerStats([]);
+                      setMatchScores({ team1Score: 0, team2Score: 0 });
+                      setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
+                      fetchData();
+                    } catch (error) {
+                      alert('Failed to save player stats: ' + error.message);
+                    }
+                  }}
+                  className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  Save Player Stats & Complete Match
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

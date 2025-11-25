@@ -201,11 +201,14 @@ const Tournaments = () => {
         {filteredTournaments.map((tournament) => (
           <div key={tournament.id} className="bg-white rounded-lg shadow hover:shadow-lg transition p-6">
             <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <Trophy className="w-6 h-6 text-orange-600" />
-                <h3 className="text-xl font-bold text-gray-900">
-                  {tournament.tournamentName || tournament.name}
-                </h3>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">
+                    {tournament.tournamentName || tournament.name}
+                  </h3>
+                  <p className="text-sm text-gray-500 font-medium">Tournament ID: #{tournament.id}</p>
+                </div>
               </div>
               <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(tournament.status)}`}>
                 {tournament.status}

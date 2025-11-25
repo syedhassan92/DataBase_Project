@@ -40,22 +40,53 @@ router.get('/:id', async (req, res) => {
 router.post('/', adminAuth, async (req, res) => {
   try {
     const { teamName, leagueId, coachId } = req.body;
+    
+    // Validate required fields (only teamName and leagueId are required)
+    if (!teamName || !leagueId) {
+      return res.status(400).json({ 
+        error: { 
+          message: 'Team Name and League are required fields', 
+          status: 400 
+        } 
+      });
+    }
+
+    // Check if team name already exists in this league
+    const [existingTeams] = await db.query(`
+      SELECT t.TeamID, t.TeamName 
+      FROM TEAM t
+      INNER JOIN TEAMLEAGUE tl ON t.TeamID = tl.TeamID
+      WHERE t.TeamName = ? AND tl.LeagueID = ?
+    `, [teamName, leagueId]);
+
+    if (existingTeams.length > 0) {
+      return res.status(400).json({
+        error: {
+          message: 'A team with this name already exists in the selected league',
+          status: 400
+        }
+      });
+    }
+
     const [result] = await db.query(
       'INSERT INTO TEAM (TeamName) VALUES (?)',
       [teamName]
     );
     const teamId = result.insertId;
     
-    // If league and coach provided, create TEAMLEAGUE entry
-    if (leagueId) {
-      await db.query(
-        'INSERT INTO TEAMLEAGUE (TeamID, LeagueID, CoachID) VALUES (?, ?, ?)',
-        [teamId, leagueId, coachId || null]
-      );
-    }
+    // Create TEAMLEAGUE entry (league is required, coach is optional)
+    await db.query(
+      'INSERT INTO TEAMLEAGUE (TeamID, LeagueID, CoachID) VALUES (?, ?, ?)',
+      [teamId, leagueId, coachId || null]
+    );
     
     res.status(201).json({ message: 'Team created successfully', teamId });
   } catch (error) {
+    // Check if error is due to coach already assigned to another team
+    if (error.code === 'ER_DUP_ENTRY' && error.message.includes('unique_coach')) {
+      return res.status(400).json({ error: { message: 'This coach is already assigned to another team. Each coach can only coach one team.', status: 400 } });
+    }
+    console.error('Error creating team:', error);
     res.status(500).json({ error: { message: 'Failed to create team', status: 500 } });
   }
 });
@@ -63,34 +94,65 @@ router.post('/', adminAuth, async (req, res) => {
 router.put('/:id', adminAuth, async (req, res) => {
   try {
     const { teamName, leagueId, coachId } = req.body;
+    
+    // Validate required fields (only teamName and leagueId are required)
+    if (!teamName || !leagueId) {
+      return res.status(400).json({ 
+        error: { 
+          message: 'Team Name and League are required fields', 
+          status: 400 
+        } 
+      });
+    }
+
+    // Check if team name already exists in this league (excluding current team)
+    const [existingTeams] = await db.query(`
+      SELECT t.TeamID, t.TeamName 
+      FROM TEAM t
+      INNER JOIN TEAMLEAGUE tl ON t.TeamID = tl.TeamID
+      WHERE t.TeamName = ? AND tl.LeagueID = ? AND t.TeamID != ?
+    `, [teamName, leagueId, req.params.id]);
+
+    if (existingTeams.length > 0) {
+      return res.status(400).json({
+        error: {
+          message: 'A team with this name already exists in the selected league',
+          status: 400
+        }
+      });
+    }
+
     await db.query(
       'UPDATE TEAM SET TeamName = ? WHERE TeamID = ?',
       [teamName, req.params.id]
     );
     
-    // Update TEAMLEAGUE if league info provided
-    if (leagueId) {
-      // Check if entry exists
-      const [existing] = await db.query(
-        'SELECT * FROM TEAMLEAGUE WHERE TeamID = ? AND LeagueID = ?',
-        [req.params.id, leagueId]
+    // Update TEAMLEAGUE (league is required, coach is optional)
+    // Check if entry exists
+    const [existing] = await db.query(
+      'SELECT * FROM TEAMLEAGUE WHERE TeamID = ? AND LeagueID = ?',
+      [req.params.id, leagueId]
+    );
+    
+    if (existing.length > 0) {
+      await db.query(
+        'UPDATE TEAMLEAGUE SET CoachID = ? WHERE TeamID = ? AND LeagueID = ?',
+        [coachId || null, req.params.id, leagueId]
       );
-      
-      if (existing.length > 0) {
-        await db.query(
-          'UPDATE TEAMLEAGUE SET CoachID = ? WHERE TeamID = ? AND LeagueID = ?',
-          [coachId || null, req.params.id, leagueId]
-        );
-      } else {
-        await db.query(
-          'INSERT INTO TEAMLEAGUE (TeamID, LeagueID, CoachID) VALUES (?, ?, ?)',
-          [req.params.id, leagueId, coachId || null]
-        );
-      }
+    } else {
+      await db.query(
+        'INSERT INTO TEAMLEAGUE (TeamID, LeagueID, CoachID) VALUES (?, ?, ?)',
+        [req.params.id, leagueId, coachId || null]
+      );
     }
     
     res.json({ message: 'Team updated successfully' });
   } catch (error) {
+    // Check if error is due to coach already assigned to another team
+    if (error.code === 'ER_DUP_ENTRY' && error.message.includes('unique_coach')) {
+      return res.status(400).json({ error: { message: 'This coach is already assigned to another team. Each coach can only coach one team.', status: 400 } });
+    }
+    console.error('Error updating team:', error);
     res.status(500).json({ error: { message: 'Failed to update team', status: 500 } });
   }
 });

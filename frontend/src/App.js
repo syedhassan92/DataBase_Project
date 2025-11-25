@@ -31,6 +31,7 @@ import PerformanceStats from './pages/PerformanceStats';
 import PlayerTransfers from './pages/PlayerTransfers';
 import ReportingSystem from './pages/ReportingSystem';
 import Statistics from './pages/Statistics';
+import LeagueTable from './pages/LeagueTable';
 import { ToastContainer } from './components/ui/Toast';
 import { useApp } from './context/AppContext';
 
@@ -220,6 +221,13 @@ function AppContent() {
                  <ProtectedRoute requiredRole="admin">
                    <Layout>
                      <Statistics />
+                   </Layout>
+                 </ProtectedRoute>
+               } />
+               <Route path="/admin/league-table" element={
+                 <ProtectedRoute requiredRole="admin">
+                   <Layout>
+                     <LeagueTable />
                    </Layout>
                  </ProtectedRoute>
                } />

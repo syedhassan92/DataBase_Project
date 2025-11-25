@@ -3,19 +3,19 @@
 USE sports_management_db;
 
 -- Insert Coaches
-INSERT INTO COACH (CoachName, Contact, Experience) VALUES
-('John Smith', 'john.smith@email.com', 15),
-('Maria Garcia', 'maria.garcia@email.com', 12),
-('David Lee', 'david.lee@email.com', 10),
-('Sarah Johnson', 'sarah.johnson@email.com', 8),
-('Ahmed Hassan', 'ahmed.hassan@email.com', 6);
+INSERT INTO COACH (CoachName, PhoneNumber, Email, Experience) VALUES
+('John Smith', '+1-555-0101', 'john.smith@email.com', 15),
+('Maria Garcia', '+1-555-0102', 'maria.garcia@email.com', 12),
+('David Lee', '+1-555-0103', 'david.lee@email.com', 10),
+('Sarah Johnson', '+1-555-0104', 'sarah.johnson@email.com', 8),
+('Ahmed Hassan', '+1-555-0105', 'ahmed.hassan@email.com', 6);
 
 -- Insert Referees
-INSERT INTO REFEREE (RefereeName, Contact, AvailabilityStatus) VALUES
-('Michael Brown', 'michael.brown@email.com', 'Available'),
-('Lisa Anderson', 'lisa.anderson@email.com', 'Available'),
-('James Wilson', 'james.wilson@email.com', 'Unavailable'),
-('Emma Davis', 'emma.davis@email.com', 'Available');
+INSERT INTO REFEREE (RefereeName, PhoneNumber, Email, AvailabilityStatus) VALUES
+('Michael Brown', '+1-555-0201', 'michael.brown@email.com', 'Available'),
+('Lisa Anderson', '+1-555-0202', 'lisa.anderson@email.com', 'Available'),
+('James Wilson', '+1-555-0203', 'james.wilson@email.com', 'Unavailable'),
+('Emma Davis', '+1-555-0204', 'emma.davis@email.com', 'Available');
 
 -- Insert Venues
 INSERT INTO VENUE (VenueName, Location, Capacity, IsAvailable) VALUES

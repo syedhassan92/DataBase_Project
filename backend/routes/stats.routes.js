@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
-const { auth } = require('../middleware/auth');
+const { auth, adminAuth } = require('../middleware/auth');
 
 // Dashboard statistics
 router.get('/dashboard', auth, async (req, res) => {
@@ -51,11 +51,20 @@ router.get('/top-players', auth, async (req, res) => {
 router.get('/standings/:leagueId', auth, async (req, res) => {
   try {
     const [standings] = await db.query(`
-      SELECT t.TeamName, ts.Wins, ts.Losses, ts.Draws, ts.Points
+      SELECT 
+        t.TeamID,
+        t.TeamName, 
+        ts.MatchesPlayed,
+        ts.Wins, 
+        ts.Draws,
+        ts.Losses, 
+        ts.GoalsFor,
+        ts.GoalDifference,
+        ts.Points
       FROM TEAMSTATS ts
       JOIN TEAM t ON ts.TeamID = t.TeamID
       WHERE ts.LeagueID = ?
-      ORDER BY ts.Points DESC, ts.Wins DESC
+      ORDER BY ts.Points DESC, ts.GoalDifference DESC, ts.GoalsFor DESC
     `, [req.params.leagueId]);
     res.json(standings);
   } catch (error) {
@@ -81,6 +90,78 @@ router.get('/recent-transfers', auth, async (req, res) => {
     res.json(transfers);
   } catch (error) {
     res.status(500).json({ error: { message: 'Failed to fetch recent transfers', status: 500 } });
+  }
+});
+
+// Save player stats from match
+router.post('/players', adminAuth, async (req, res) => {
+  try {
+    const { matchId, playerStats } = req.body;
+    
+    if (!matchId || !playerStats || playerStats.length === 0) {
+      return res.status(400).json({ error: { message: 'Match ID and player stats are required', status: 400 } });
+    }
+
+    // Get match details to determine if it's a win
+    const [matches] = await db.query(`
+      SELECT Team1ID, Team2ID, Team1Score, Team2Score, WinnerTeamID 
+      FROM \`MATCH\` 
+      WHERE MatchID = ?
+    `, [matchId]);
+    
+    if (matches.length === 0) {
+      return res.status(404).json({ error: { message: 'Match not found', status: 404 } });
+    }
+
+    const match = matches[0];
+
+    // Update stats for each player
+    for (const stat of playerStats) {
+      const { playerId, goals, assists } = stat;
+      
+      // Get player's team to check if they won
+      const [playerTeams] = await db.query(`
+        SELECT TeamID 
+        FROM PLAYERTEAM 
+        WHERE PlayerID = ? AND IsCurrent = TRUE
+      `, [playerId]);
+      
+      if (playerTeams.length === 0) continue;
+      
+      const playerTeamId = playerTeams[0].TeamID;
+      const isWin = match.WinnerTeamID === playerTeamId ? 1 : 0;
+
+      // Check if player stats record exists
+      const [existingStats] = await db.query(`
+        SELECT StatsID 
+        FROM PLAYERSTATS 
+        WHERE PlayerID = ?
+      `, [playerId]);
+
+      if (existingStats.length > 0) {
+        // Update existing stats
+        await db.query(`
+          UPDATE PLAYERSTATS 
+          SET 
+            MatchesPlayed = MatchesPlayed + 1,
+            Wins = Wins + ?,
+            GoalsOrRuns = GoalsOrRuns + ?,
+            Assists = Assists + ?
+          WHERE PlayerID = ?
+        `, [isWin, parseInt(goals) || 0, parseInt(assists) || 0, playerId]);
+      } else {
+        // Create new stats record
+        await db.query(`
+          INSERT INTO PLAYERSTATS (PlayerID, MatchesPlayed, Wins, GoalsOrRuns, Assists, Rating)
+          VALUES (?, 1, ?, ?, ?, 0.00)
+        `, [playerId, isWin, parseInt(goals) || 0, parseInt(assists) || 0]);
+      }
+    }
+
+    res.json({ message: 'Player stats updated successfully' });
+  } catch (error) {
+    console.error('Error saving player stats:', error);
+    res.status(500).json({ error: { message: 'Failed to save player stats', status: 500 } });
   }
 });
 
