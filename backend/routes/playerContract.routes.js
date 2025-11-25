@@ -68,7 +68,22 @@ router.post('/', adminAuth, async (req, res) => {
   try {
     const { playerId, teamId, contractDetails, startDate, endDate, isCurrent } = req.body;
 
-    // If this is marked as current, set all other contracts for this player to inactive
+    // Check if player already has a current team
+    if (isCurrent) {
+      const [existingCurrent] = await db.query(
+        'SELECT pt.PlayerTeamID, t.TeamName FROM PLAYERTEAM pt JOIN TEAM t ON pt.TeamID = t.TeamID WHERE pt.PlayerID = ? AND pt.IsCurrent = TRUE',
+        [playerId]
+      );
+      
+      if (existingCurrent.length > 0) {
+        return res.status(400).json({ 
+          message: `Player is already assigned to ${existingCurrent[0].TeamName}. A player cannot join multiple teams simultaneously.`,
+          existingTeam: existingCurrent[0].TeamName
+        });
+      }
+    }
+
+    // If this is marked as current, set all other contracts for this player to inactive (safety measure)
     if (isCurrent) {
       await db.query(
         'UPDATE PLAYERTEAM SET IsCurrent = FALSE WHERE PlayerID = ?',
@@ -107,7 +122,22 @@ router.put('/:id', adminAuth, async (req, res) => {
       return res.status(404).json({ message: 'Contract not found' });
     }
 
-    // If this is marked as current, set all other contracts for this player to inactive
+    // Check if player already has a current team (when setting this to current)
+    if (isCurrent) {
+      const [existingCurrent] = await db.query(
+        'SELECT pt.PlayerTeamID, t.TeamName FROM PLAYERTEAM pt JOIN TEAM t ON pt.TeamID = t.TeamID WHERE pt.PlayerID = ? AND pt.IsCurrent = TRUE AND pt.PlayerTeamID != ?',
+        [existing[0].PlayerID, req.params.id]
+      );
+      
+      if (existingCurrent.length > 0) {
+        return res.status(400).json({ 
+          message: `Player is already assigned to ${existingCurrent[0].TeamName}. A player cannot join multiple teams simultaneously.`,
+          existingTeam: existingCurrent[0].TeamName
+        });
+      }
+    }
+
+    // If this is marked as current, set all other contracts for this player to inactive (safety measure)
     if (isCurrent) {
       await db.query(
         'UPDATE PLAYERTEAM SET IsCurrent = FALSE WHERE PlayerID = ? AND PlayerTeamID != ?',

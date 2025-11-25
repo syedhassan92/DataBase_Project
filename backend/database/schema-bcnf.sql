@@ -301,6 +301,42 @@ BEGIN
 END//
 DELIMITER ;
 
+-- Trigger to prevent a player from joining multiple teams simultaneously
+DELIMITER //
+CREATE TRIGGER before_playerteam_insert
+BEFORE INSERT ON PLAYERTEAM
+FOR EACH ROW
+BEGIN
+  IF NEW.IsCurrent = TRUE THEN
+    IF EXISTS (
+      SELECT 1 FROM PLAYERTEAM 
+      WHERE PlayerID = NEW.PlayerID 
+      AND IsCurrent = TRUE
+    ) THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Player is already assigned to a current team';
+    END IF;
+  END IF;
+END//
+
+CREATE TRIGGER before_playerteam_update
+BEFORE UPDATE ON PLAYERTEAM
+FOR EACH ROW
+BEGIN
+  IF NEW.IsCurrent = TRUE AND OLD.IsCurrent = FALSE THEN
+    IF EXISTS (
+      SELECT 1 FROM PLAYERTEAM 
+      WHERE PlayerID = NEW.PlayerID 
+      AND IsCurrent = TRUE
+      AND PlayerTeamID != NEW.PlayerTeamID
+    ) THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Player is already assigned to a current team';
+    END IF;
+  END IF;
+END//
+DELIMITER ;
+
 -- Insert default admin user
 INSERT INTO USERACCOUNT (Username, Password, Role) VALUES ('admin', 'admin123', 'Admin');
 INSERT INTO ADMIN (UserID, AdminName, Email) VALUES (1, 'System Admin', 'admin@sports.com');
