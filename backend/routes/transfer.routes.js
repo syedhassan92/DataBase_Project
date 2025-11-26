@@ -6,40 +6,46 @@ const { adminAuth } = require('../middleware/auth');
 router.get('/', async (req, res) => {
   try {
     const [transfers] = await db.query(`
-      SELECT t.*, td.PlayerID, p.PlayerName,
+      SELECT t.*, p.PlayerName, l.LeagueName,
         ft.TeamName as FromTeamName, tt.TeamName as ToTeamName
       FROM TRANSFER t
-      LEFT JOIN TRANSFERDETAILS td ON t.TransferID = td.TransferID
-      LEFT JOIN PLAYER p ON td.PlayerID = p.PlayerID
+      LEFT JOIN PLAYER p ON t.PlayerID = p.PlayerID
+      LEFT JOIN LEAGUE l ON t.LeagueID = l.LeagueID
       LEFT JOIN TEAM ft ON t.FromTeamID = ft.TeamID
       LEFT JOIN TEAM tt ON t.ToTeamID = tt.TeamID
       ORDER BY t.TransferDate DESC
     `);
     res.json(transfers);
   } catch (error) {
+    console.error('Error fetching transfers:', error);
     res.status(500).json({ error: { message: 'Failed to fetch transfers', status: 500 } });
   }
 });
 
 router.post('/', adminAuth, async (req, res) => {
   try {
-    const { transferId, leagueId, fromTeamId, toTeamId, transferDate, transferType, playerId } = req.body;
+    const { playerId, leagueId, fromTeamId, toTeamId, transferDate, transferType } = req.body;
     
-    await db.query(
-      'INSERT INTO TRANSFER (TransferID, LeagueID, FromTeamID, ToTeamID, TransferDate, TransferType) VALUES (?, ?, ?, ?, ?, ?)',
-      [transferId, leagueId || null, fromTeamId || null, toTeamId || null, transferDate, transferType || 'Permanent']
-    );
-
-    if (playerId) {
-      const detailsId = `TD${Date.now()}`;
-      await db.query(
-        'INSERT INTO TRANSFERDETAILS (TransferDetailsID, TransferID, PlayerID) VALUES (?, ?, ?)',
-        [detailsId, transferId, playerId]
-      );
+    if (!playerId || !toTeamId || !leagueId) {
+      return res.status(400).json({ 
+        error: { 
+          message: 'Player, destination team, and league are required', 
+          status: 400 
+        } 
+      });
     }
 
-    res.status(201).json({ message: 'Transfer created successfully', transferId });
+    const [result] = await db.query(
+      'INSERT INTO TRANSFER (PlayerID, FromTeamID, ToTeamID, LeagueID, TransferDate, TransferType) VALUES (?, ?, ?, ?, ?, ?)',
+      [playerId, fromTeamId || null, toTeamId, leagueId, transferDate, transferType || 'Permanent']
+    );
+
+    res.status(201).json({ 
+      message: 'Transfer created successfully', 
+      transferId: result.insertId 
+    });
   } catch (error) {
+    console.error('Error creating transfer:', error);
     res.status(500).json({ error: { message: 'Failed to create transfer', status: 500 } });
   }
 });

@@ -97,7 +97,7 @@ async function assignPlayersToTeams() {
           
           // Initialize player stats
           await connection.execute(`
-            INSERT INTO PLAYERSTATS (PlayerID, MatchesPlayed, Wins, GoalsOrRuns, Assists, Rating)
+            INSERT INTO PLAYERSTATS (PlayerID, MatchesPlayed, Wins, Goals, Assists, Rating)
             VALUES (?, 0, 0, 0, 0, ?)
           `, [playerId, rating]);
           

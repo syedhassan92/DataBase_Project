@@ -25,6 +25,40 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Get teams by league
+router.get('/league/:leagueId', async (req, res) => {
+  try {
+    const [teams] = await db.query(`
+      SELECT t.TeamID, t.TeamName
+      FROM TEAM t
+      JOIN TEAMLEAGUE tl ON t.TeamID = tl.TeamID
+      WHERE tl.LeagueID = ?
+      ORDER BY t.TeamName
+    `, [req.params.leagueId]);
+    res.json(teams);
+  } catch (error) {
+    console.error('Error fetching teams by league:', error);
+    res.status(500).json({ error: { message: 'Failed to fetch teams', status: 500 } });
+  }
+});
+
+// Get teams by tournament
+router.get('/tournament/:tournamentId', async (req, res) => {
+  try {
+    const [teams] = await db.query(`
+      SELECT t.TeamID, t.TeamName
+      FROM TEAM t
+      JOIN TOURNAMENTTEAM tt ON t.TeamID = tt.TeamID
+      WHERE tt.TournamentID = ?
+      ORDER BY t.TeamName
+    `, [req.params.tournamentId]);
+    res.json(teams);
+  } catch (error) {
+    console.error('Error fetching teams by tournament:', error);
+    res.status(500).json({ error: { message: 'Failed to fetch teams', status: 500 } });
+  }
+});
+
 router.get('/:id', async (req, res) => {
   try {
     const [teams] = await db.query('SELECT * FROM TEAM WHERE TeamID = ?', [req.params.id]);

@@ -81,6 +81,23 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// Get teams for a tournament
+router.get('/:id/teams', async (req, res) => {
+  try {
+    const [teams] = await db.query(`
+      SELECT t.TeamID, t.TeamName
+      FROM TEAM t
+      JOIN TOURNAMENTTEAM tt ON t.TeamID = tt.TeamID
+      WHERE tt.TournamentID = ?
+      ORDER BY t.TeamName
+    `, [req.params.id]);
+    res.json(teams);
+  } catch (error) {
+    console.error('Error fetching tournament teams:', error);
+    res.status(500).json({ error: { message: 'Failed to fetch tournament teams', status: 500 } });
+  }
+});
+
 router.post('/', adminAuth, async (req, res) => {
   try {
     const {

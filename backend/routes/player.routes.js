@@ -5,11 +5,31 @@ const { adminAuth } = require('../middleware/auth');
 
 router.get('/', async (req, res) => {
   try {
-    const [players] = await db.query(`
-      SELECT p.PlayerID, p.PlayerName, p.PlayerRole, p.CreatedAt
+    const { teamId } = req.query;
+    
+    let query = `
+      SELECT 
+        p.PlayerID, 
+        p.PlayerName, 
+        p.PlayerRole, 
+        p.CreatedAt,
+        t.TeamID,
+        t.TeamName
       FROM PLAYER p
-      ORDER BY p.CreatedAt DESC
-    `);
+      LEFT JOIN PLAYERTEAM pt ON p.PlayerID = pt.PlayerID AND pt.IsCurrent = 1
+      LEFT JOIN TEAM t ON pt.TeamID = t.TeamID
+    `;
+    
+    const params = [];
+    
+    if (teamId) {
+      query += ` WHERE t.TeamID = ?`;
+      params.push(teamId);
+    }
+    
+    query += ` ORDER BY p.CreatedAt DESC`;
+    
+    const [players] = await db.query(query, params);
     res.json(players);
   } catch (error) {
     res.status(500).json({ error: { message: 'Failed to fetch players', status: 500 } });

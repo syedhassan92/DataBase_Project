@@ -51,6 +51,16 @@ router.post('/', adminAuth, async (req, res) => {
       return res.status(400).json({ error: { message: 'Team1 and Team2 are required', status: 400 } });
     }
 
+    // Validate that match has either leagueId OR tournamentId (not both, not neither)
+    if ((leagueId && tournamentId) || (!leagueId && !tournamentId)) {
+      return res.status(400).json({ 
+        error: { 
+          message: 'A match must be either a League match OR a Tournament match (not both, not neither). Please select either a league or a tournament.', 
+          status: 400 
+        } 
+      });
+    }
+
     // Check if both teams have coaches assigned
     const [team1Coach] = await db.query(
       'SELECT t.TeamName, tl.CoachID FROM TEAM t LEFT JOIN TEAMLEAGUE tl ON t.TeamID = tl.TeamID WHERE t.TeamID = ?',
@@ -232,16 +242,63 @@ router.post('/', adminAuth, async (req, res) => {
 
 router.put('/:id', adminAuth, async (req, res) => {
   try {
-    const { matchDate, matchTime, team1Score, team2Score, status, winnerTeamId, highlights, team1Possession, team2Possession } = req.body;
+    const { leagueId, tournamentId, matchDate, matchTime, team1Score, team2Score, status, winnerTeamId, highlights, team1Possession, team2Possession } = req.body;
+    
+    // Validate that match has either leagueId OR tournamentId if both are provided (not both)
+    if (leagueId !== undefined && tournamentId !== undefined) {
+      if ((leagueId && tournamentId) || (!leagueId && !tournamentId)) {
+        return res.status(400).json({ 
+          error: { 
+            message: 'A match must be either a League match OR a Tournament match (not both, not neither). Please select either a league or a tournament.', 
+            status: 400 
+          } 
+        });
+      }
+    }
     
     // Get match details to know which teams are playing
-    const [matchDetails] = await db.query('SELECT Team1ID, Team2ID FROM \`MATCH\` WHERE MatchID = ?', [req.params.id]);
+    const [matchDetails] = await db.query('SELECT Team1ID, Team2ID, MatchDate FROM \`MATCH\` WHERE MatchID = ?', [req.params.id]);
     
     if (matchDetails.length === 0) {
       return res.status(404).json({ error: { message: 'Match not found', status: 404 } });
     }
 
-    const { Team1ID, Team2ID } = matchDetails[0];
+    const { Team1ID, Team2ID, MatchDate: currentMatchDate } = matchDetails[0];
+
+    // Check if date is being changed and if teams already have matches on new date
+    if (matchDate && matchDate !== currentMatchDate) {
+      // Check if Team1 already has a match on the new date
+      const [team1Conflicts] = await db.query(
+        'SELECT MatchID FROM \`MATCH\` WHERE (Team1ID = ? OR Team2ID = ?) AND MatchDate = ? AND Status != "Cancelled" AND MatchID != ?',
+        [Team1ID, Team1ID, matchDate, req.params.id]
+      );
+      
+      if (team1Conflicts.length > 0) {
+        const [team1Name] = await db.query('SELECT TeamName FROM TEAM WHERE TeamID = ?', [Team1ID]);
+        return res.status(409).json({ 
+          error: { 
+            message: `Cannot update match date. ${team1Name[0]?.TeamName || 'Team 1'} already has a match scheduled on ${new Date(matchDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}. A team cannot play more than one match on the same day.`, 
+            status: 409 
+          } 
+        });
+      }
+
+      // Check if Team2 already has a match on the new date
+      const [team2Conflicts] = await db.query(
+        'SELECT MatchID FROM \`MATCH\` WHERE (Team1ID = ? OR Team2ID = ?) AND MatchDate = ? AND Status != "Cancelled" AND MatchID != ?',
+        [Team2ID, Team2ID, matchDate, req.params.id]
+      );
+      
+      if (team2Conflicts.length > 0) {
+        const [team2Name] = await db.query('SELECT TeamName FROM TEAM WHERE TeamID = ?', [Team2ID]);
+        return res.status(409).json({ 
+          error: { 
+            message: `Cannot update match date. ${team2Name[0]?.TeamName || 'Team 2'} already has a match scheduled on ${new Date(matchDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}. A team cannot play more than one match on the same day.`, 
+            status: 409 
+          } 
+        });
+      }
+    }
 
     // Update match (use !== undefined to allow 0 as valid score)
     await db.query(

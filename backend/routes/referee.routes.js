@@ -26,13 +26,22 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', adminAuth, async (req, res) => {
   try {
-    const { refereeId, refereeName, phoneNumber, email, availabilityStatus } = req.body;
-    await db.query(
-      'INSERT INTO REFEREE (RefereeID, RefereeName, PhoneNumber, Email, AvailabilityStatus) VALUES (?, ?, ?, ?, ?)',
-      [refereeId, refereeName, phoneNumber || null, email || null, availabilityStatus || 'Available']
+    const { refereeName, phoneNumber, email, availabilityStatus } = req.body;
+    const [result] = await db.query(
+      'INSERT INTO REFEREE (RefereeName, PhoneNumber, Email, AvailabilityStatus) VALUES (?, ?, ?, ?)',
+      [refereeName, phoneNumber || null, email || null, availabilityStatus || 'Available']
     );
-    res.status(201).json({ message: 'Referee created successfully', refereeId });
+    res.status(201).json({ message: 'Referee created successfully', refereeId: result.insertId });
   } catch (error) {
+    console.error('Error creating referee:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      if (error.message.includes('PhoneNumber')) {
+        return res.status(400).json({ error: { message: 'This phone number is already registered to another referee.', status: 400 } });
+      } else if (error.message.includes('Email')) {
+        return res.status(400).json({ error: { message: 'This email is already registered to another referee.', status: 400 } });
+      }
+      return res.status(400).json({ error: { message: 'Duplicate entry. Phone number and email must be unique.', status: 400 } });
+    }
     res.status(500).json({ error: { message: 'Failed to create referee', status: 500 } });
   }
 });
@@ -46,6 +55,15 @@ router.put('/:id', adminAuth, async (req, res) => {
     );
     res.json({ message: 'Referee updated successfully' });
   } catch (error) {
+    console.error('Error updating referee:', error);
+    if (error.code === 'ER_DUP_ENTRY') {
+      if (error.message.includes('PhoneNumber')) {
+        return res.status(400).json({ error: { message: 'This phone number is already registered to another referee.', status: 400 } });
+      } else if (error.message.includes('Email')) {
+        return res.status(400).json({ error: { message: 'This email is already registered to another referee.', status: 400 } });
+      }
+      return res.status(400).json({ error: { message: 'Duplicate entry. Phone number and email must be unique.', status: 400 } });
+    }
     res.status(500).json({ error: { message: 'Failed to update referee', status: 500 } });
   }
 });
