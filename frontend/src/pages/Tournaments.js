@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Calendar, Trophy, Users, Search, Filter } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Edit2, Trash2, Calendar, Trophy, Users, Search, Filter, BarChart3 } from 'lucide-react';
 import apiService from '../services/apiService';
 
 const Tournaments = () => {
+  const navigate = useNavigate();
   const [tournaments, setTournaments] = useState([]);
   const [leagues, setLeagues] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -228,21 +230,30 @@ const Tournaments = () => {
               </div>
             </div>
 
-            <div className="flex gap-2 pt-4 border-t">
+            <div className="flex flex-col gap-2 pt-4 border-t">
               <button
-                onClick={() => handleEdit(tournament)}
-                className="flex-1 flex items-center justify-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 transition"
+                onClick={() => navigate(`/tournaments/${tournament.id}`)}
+                className="w-full flex items-center justify-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition font-semibold"
               >
-                <Edit2 className="w-4 h-4" />
-                Edit
+                <BarChart3 className="w-4 h-4" />
+                View Tournament Stats
               </button>
-              <button
-                onClick={() => handleDelete(tournament.id)}
-                className="flex-1 flex items-center justify-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100 transition"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleEdit(tournament)}
+                  className="flex-1 flex items-center justify-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 transition"
+                >
+                  <Edit2 className="w-4 h-4" />
+                  Edit
+                </button>
+                <button
+                  onClick={() => handleDelete(tournament.id)}
+                  className="flex-1 flex items-center justify-center gap-2 bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100 transition"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
         ))}

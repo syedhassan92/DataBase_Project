@@ -5,13 +5,29 @@ import apiService from '../services/apiService';
 const Statistics = () => {
   const [topScorers, setTopScorers] = useState([]);
   const [topAssists, setTopAssists] = useState([]);
+  const [leagues, setLeagues] = useState([]);
+  const [selectedLeague, setSelectedLeague] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchStatistics = async () => {
+    const fetchLeagues = async () => {
       try {
-        const scorersData = await apiService.statistics.getTopScorers();
-        const assistsData = await apiService.statistics.getTopAssists();
+        const leaguesData = await apiService.leagues.getAll();
+        setLeagues(leaguesData);
+      } catch (error) {
+        console.error('Error fetching leagues:', error);
+      }
+    };
+    fetchLeagues();
+  }, []);
+
+  useEffect(() => {
+    const fetchStatistics = async () => {
+      setLoading(true);
+      try {
+        const params = selectedLeague ? { leagueId: selectedLeague } : {};
+        const scorersData = await apiService.statistics.getTopScorers(params);
+        const assistsData = await apiService.statistics.getTopAssists(params);
         setTopScorers(scorersData);
         setTopAssists(assistsData);
       } catch (error) {
@@ -22,13 +38,30 @@ const Statistics = () => {
     };
 
     fetchStatistics();
-  }, []);
+  }, [selectedLeague]);
 
   if (loading) return <div className="text-center py-8">Loading statistics...</div>;
 
   return (
     <div>
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Performance Statistics</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Performance Statistics</h1>
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-700">Filter by League:</label>
+          <select
+            value={selectedLeague}
+            onChange={(e) => setSelectedLeague(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
+          >
+            <option value="" className="bg-white text-gray-900">All Leagues</option>
+            {leagues.map((league) => (
+              <option key={league.LeagueID} value={league.LeagueID} className="bg-white text-gray-900">
+                {league.LeagueName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Top Scorers */}
@@ -43,7 +76,7 @@ const Statistics = () => {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">{player.name}</p>
-                    <p className="text-sm text-gray-600">{player.position}</p>
+                    <p className="text-sm text-gray-600">{player.position} • {player.TeamName}</p>
                   </div>
                 </div>
                 <p className="text-2xl font-bold text-blue-600">{player.goals}</p>
@@ -64,7 +97,7 @@ const Statistics = () => {
                   </div>
                   <div>
                     <p className="font-semibold text-gray-900">{player.name}</p>
-                    <p className="text-sm text-gray-600">{player.position}</p>
+                    <p className="text-sm text-gray-600">{player.position} • {player.TeamName}</p>
                   </div>
                 </div>
                 <p className="text-2xl font-bold text-green-600">{player.assists}</p>

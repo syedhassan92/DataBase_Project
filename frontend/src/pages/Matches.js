@@ -11,6 +11,7 @@ const Matches = () => {
   const [allReferees, setAllReferees] = useState([]);
   const [leagues, setLeagues] = useState([]);
   const [tournaments, setTournaments] = useState([]);
+  const [filteredTeams, setFilteredTeams] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -95,6 +96,23 @@ const Matches = () => {
     }
   };
 
+  const fetchTeamsByContext = async (leagueId, tournamentId) => {
+    try {
+      if (leagueId) {
+        const leagueTeams = await apiService.teams.getByLeague(leagueId);
+        setFilteredTeams(leagueTeams);
+      } else if (tournamentId) {
+        const tournamentTeams = await apiService.teams.getByTournament(tournamentId);
+        setFilteredTeams(tournamentTeams);
+      } else {
+        setFilteredTeams(teams);
+      }
+    } catch (error) {
+      console.error('Error fetching filtered teams:', error);
+      setFilteredTeams(teams);
+    }
+  };
+
   const handleSchedule = () => {
     setEditingMatch(null);
     setFormData({
@@ -108,10 +126,11 @@ const Matches = () => {
       matchTime: '',
       status: 'Scheduled'
     });
+    setFilteredTeams(teams);
     setShowModal(true);
   };
 
-  const handleEdit = (match) => {
+  const handleEdit = async (match) => {
     setEditingMatch(match);
     let matchDate = match.MatchDate || match.matchDate || '';
     const matchTime = match.MatchTime || match.matchTime || '';
@@ -122,17 +141,24 @@ const Matches = () => {
       matchDate = dateObj.toISOString().split('T')[0];
     }
     
+    const leagueId = match.LeagueID || match.leagueId || '';
+    const tournamentId = match.TournamentID || match.tournamentId || '';
+    
     setFormData({
       team1Id: match.Team1ID || match.team1Id || '',
       team2Id: match.Team2ID || match.team2Id || '',
-      leagueId: match.LeagueID || match.leagueId || '',
-      tournamentId: match.TournamentID || match.tournamentId || '',
+      leagueId: leagueId,
+      tournamentId: tournamentId,
       venueId: match.VenueID || match.venueId || '',
       refereeId: match.RefereeID || match.refereeId || '',
       matchDate: matchDate,
       matchTime: matchTime,
       status: match.Status || match.status || 'Scheduled'
     });
+    
+    // Fetch filtered teams based on league or tournament
+    await fetchTeamsByContext(leagueId, tournamentId);
+    
     // Don't fetch available venues/referees when just opening edit
     // Let them remain as is, user can change date/time to trigger refresh if needed
     setVenues(allVenues);
@@ -360,15 +386,19 @@ const Matches = () => {
                     required
                     value={formData.team1Id}
                     onChange={(e) => setFormData({...formData, team1Id: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    disabled={!formData.leagueId && !formData.tournamentId}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 disabled:bg-gray-100"
                   >
                     <option value="">Select Team 1</option>
-                    {teams.map(team => (
+                    {filteredTeams.map(team => (
                       <option key={team.TeamID || team.id} value={team.TeamID || team.id}>
                         {team.TeamName || team.name}
                       </option>
                     ))}
                   </select>
+                  {!formData.leagueId && !formData.tournamentId && (
+                    <p className="text-xs text-gray-500 mt-1">Select a league or tournament first</p>
+                  )}
                 </div>
 
                 <div>
@@ -379,51 +409,71 @@ const Matches = () => {
                     required
                     value={formData.team2Id}
                     onChange={(e) => setFormData({...formData, team2Id: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    disabled={!formData.leagueId && !formData.tournamentId}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 disabled:bg-gray-100"
                   >
                     <option value="">Select Team 2</option>
-                    {teams.filter(t => (t.TeamID || t.id) != formData.team1Id).map(team => (
+                    {filteredTeams.filter(t => (t.TeamID || t.id) != formData.team1Id).map(team => (
                       <option key={team.TeamID || team.id} value={team.TeamID || team.id}>
                         {team.TeamName || team.name}
                       </option>
                     ))}
                   </select>
+                  {!formData.leagueId && !formData.tournamentId && (
+                    <p className="text-xs text-gray-500 mt-1">Select a league or tournament first</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    League
+                    League *
                   </label>
                   <select
                     value={formData.leagueId}
-                    onChange={(e) => setFormData({...formData, leagueId: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    onChange={(e) => {
+                      const newLeagueId = e.target.value;
+                      setFormData({...formData, leagueId: newLeagueId, tournamentId: '', team1Id: '', team2Id: ''});
+                      fetchTeamsByContext(newLeagueId, '');
+                    }}
+                    disabled={!!formData.tournamentId}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 disabled:bg-gray-100"
                   >
-                    <option value="">None</option>
+                    <option value="">Select League</option>
                     {leagues.map(league => (
                       <option key={league.LeagueID || league.id} value={league.LeagueID || league.id}>
                         {league.LeagueName || league.name}
                       </option>
                     ))}
                   </select>
+                  {formData.tournamentId && (
+                    <p className="text-xs text-gray-500 mt-1">Disabled (Tournament selected)</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tournament
+                    Tournament *
                   </label>
                   <select
                     value={formData.tournamentId}
-                    onChange={(e) => setFormData({...formData, tournamentId: e.target.value})}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    onChange={(e) => {
+                      const newTournamentId = e.target.value;
+                      setFormData({...formData, tournamentId: newTournamentId, leagueId: '', team1Id: '', team2Id: ''});
+                      fetchTeamsByContext('', newTournamentId);
+                    }}
+                    disabled={!!formData.leagueId}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 disabled:bg-gray-100"
                   >
-                    <option value="">None</option>
+                    <option value="">Select Tournament</option>
                     {tournaments.map(tournament => (
                       <option key={tournament.TournamentID || tournament.id} value={tournament.TournamentID || tournament.id}>
                         {tournament.TournamentName || tournament.tournamentName || tournament.name}
                       </option>
                     ))}
                   </select>
+                  {formData.leagueId && (
+                    <p className="text-xs text-gray-500 mt-1">Disabled (League selected)</p>
+                  )}
                 </div>
 
                 <div>
