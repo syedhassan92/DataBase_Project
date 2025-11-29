@@ -1,0 +1,11 @@
+DELIMITER //
+CREATE TRIGGER before_admin_insert
+BEFORE INSERT ON ADMIN
+FOR EACH ROW
+BEGIN
+  IF (SELECT COUNT(*) FROM ADMIN) >= 1 THEN
+    SIGNAL SQLSTATE '45000'
+    SET MESSAGE_TEXT = 'Only one admin account is allowed in the system';
+  END IF;
+END//
+DELIMITER ;
