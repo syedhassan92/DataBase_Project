@@ -12,7 +12,8 @@ CREATE TABLE USERACCOUNT (
     Password VARCHAR(255) NOT NULL,
     Role ENUM('User', 'Admin') NOT NULL DEFAULT 'User',
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- ADMIN Table (BCNF: UserID determines all attributes)
 CREATE TABLE ADMIN (
@@ -21,7 +22,8 @@ CREATE TABLE ADMIN (
     AdminName VARCHAR(100) NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (UserID) REFERENCES USERACCOUNT(UserID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- COACH Table (BCNF: CoachID determines all attributes)
 CREATE TABLE COACH (
@@ -31,7 +33,8 @@ CREATE TABLE COACH (
     Email VARCHAR(100) UNIQUE,
     Experience INT DEFAULT 0,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- REFEREE Table (BCNF: RefereeID determines all attributes)
 CREATE TABLE REFEREE (
@@ -41,7 +44,8 @@ CREATE TABLE REFEREE (
     Email VARCHAR(100) UNIQUE,
     AvailabilityStatus ENUM('Available', 'Unavailable') DEFAULT 'Available',
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- LEAGUE Table (BCNF: LeagueID determines all attributes)
 CREATE TABLE LEAGUE (
@@ -53,7 +57,8 @@ CREATE TABLE LEAGUE (
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (AdminID) REFERENCES ADMIN(AdminID) ON DELETE CASCADE,
     CHECK (EndDate >= StartDate)
-);
+)
+ENGINE=InnoDB;
 
 -- TOURNAMENT Table (BCNF: TournamentID determines all attributes)
 CREATE TABLE TOURNAMENT (
@@ -68,14 +73,16 @@ CREATE TABLE TOURNAMENT (
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (AdminID) REFERENCES ADMIN(AdminID) ON DELETE CASCADE,
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE SET NULL
-);
+)
+ENGINE=InnoDB;
 
 -- TEAM Table (BCNF: TeamID determines all attributes)
 CREATE TABLE TEAM (
     TeamID INT AUTO_INCREMENT PRIMARY KEY,
     TeamName VARCHAR(100) NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- TEAMLEAGUE Table (New: Associates teams with leagues and coaches - BCNF)
 -- A team can participate in multiple leagues, but each coach can only coach ONE team
@@ -92,7 +99,8 @@ CREATE TABLE TEAMLEAGUE (
     FOREIGN KEY (CoachID) REFERENCES COACH(CoachID) ON DELETE SET NULL,
     UNIQUE KEY unique_team_league (TeamID, LeagueID),
     UNIQUE KEY unique_coach (CoachID)
-);
+)
+ENGINE=InnoDB;
 
 -- TEAMSTATS Table (BCNF: Natural key (LeagueID, TeamID) as primary key)
 -- Removed surrogate key to achieve BCNF
@@ -110,10 +118,12 @@ CREATE TABLE TEAMSTATS (
     PRIMARY KEY (LeagueID, TeamID),
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- Trigger to automatically populate TEAMSTATS when team is added to league
 DELIMITER //
+DROP TRIGGER IF EXISTS after_teamleague_insert//
 CREATE TRIGGER after_teamleague_insert
 AFTER INSERT ON TEAMLEAGUE
 FOR EACH ROW
@@ -133,7 +143,8 @@ CREATE TABLE TOURNAMENTTEAM (
     PRIMARY KEY (TournamentID, TeamID),
     FOREIGN KEY (TournamentID) REFERENCES TOURNAMENT(TournamentID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- PLAYER Table (BCNF: PlayerID determines all attributes)
 -- Removed TeamID to achieve BCNF (a player's team can change)
@@ -142,7 +153,8 @@ CREATE TABLE PLAYER (
     PlayerName VARCHAR(100) NOT NULL,
     PlayerRole VARCHAR(50),
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- PLAYERTEAM Table (New: Associates players with teams and contract details)
 -- BCNF: Allows tracking player transfers and current team
@@ -158,7 +170,8 @@ CREATE TABLE PLAYERTEAM (
     FOREIGN KEY (PlayerID) REFERENCES PLAYER(PlayerID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
     UNIQUE KEY unique_current_player (PlayerID, IsCurrent)
-);
+)
+ENGINE=InnoDB;
 
 -- VENUE Table (BCNF: VenueID determines all attributes)
 CREATE TABLE VENUE (
@@ -168,7 +181,8 @@ CREATE TABLE VENUE (
     Capacity INT,
     IsAvailable BOOLEAN DEFAULT TRUE,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- MATCH Table (BCNF: MatchID determines all attributes)
 -- Added Team1ID and Team2ID to properly reference teams
@@ -197,7 +211,8 @@ CREATE TABLE `MATCH` (
     FOREIGN KEY (WinnerTeamID) REFERENCES TEAM(TeamID) ON DELETE SET NULL,
     CHECK (Team1ID != Team2ID),
     CHECK ((LeagueID IS NOT NULL AND TournamentID IS NULL) OR (LeagueID IS NULL AND TournamentID IS NOT NULL))
-);
+)
+ENGINE=InnoDB;
 
 -- PLAYERSTATS Table (BCNF: StatsID determines all attributes)
 CREATE TABLE PLAYERSTATS (
@@ -214,7 +229,8 @@ CREATE TABLE PLAYERSTATS (
     FOREIGN KEY (PlayerID) REFERENCES PLAYER(PlayerID) ON DELETE CASCADE,
     FOREIGN KEY (MatchID) REFERENCES `MATCH`(MatchID) ON DELETE CASCADE,
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- MATCHSTATS Table (BCNF: MatchStatsID determines all attributes)
 -- Tracks team performance statistics for each match
@@ -228,7 +244,8 @@ CREATE TABLE MATCHSTATS (
     FOREIGN KEY (MatchID) REFERENCES `MATCH`(MatchID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
     UNIQUE KEY unique_match_team (MatchID, TeamID)
-);
+)
+ENGINE=InnoDB;
 
 -- TRANSFER Table (BCNF: TransferID determines all attributes)
 CREATE TABLE TRANSFER (
@@ -245,10 +262,12 @@ CREATE TABLE TRANSFER (
     FOREIGN KEY (ToTeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
     CHECK (FromTeamID != ToTeamID)
-);
+)
+ENGINE=InnoDB;
 
 -- Trigger to automatically update TEAMSTATS when a match is completed
 DELIMITER //
+DROP TRIGGER IF EXISTS after_match_update//
 CREATE TRIGGER after_match_update
 AFTER UPDATE ON `MATCH`
 FOR EACH ROW
@@ -310,6 +329,7 @@ DELIMITER ;
 
 -- Trigger to prevent a player from joining multiple teams simultaneously
 DELIMITER //
+DROP TRIGGER IF EXISTS before_playerteam_insert//
 CREATE TRIGGER before_playerteam_insert
 BEFORE INSERT ON PLAYERTEAM
 FOR EACH ROW
@@ -326,6 +346,7 @@ BEGIN
   END IF;
 END//
 
+DROP TRIGGER IF EXISTS before_playerteam_update//
 CREATE TRIGGER before_playerteam_update
 BEFORE UPDATE ON PLAYERTEAM
 FOR EACH ROW
@@ -346,6 +367,7 @@ DELIMITER ;
 
 -- Trigger to enforce single admin constraint
 DELIMITER //
+DROP TRIGGER IF EXISTS before_admin_insert//
 CREATE TRIGGER before_admin_insert
 BEFORE INSERT ON ADMIN
 FOR EACH ROW

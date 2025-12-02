@@ -68,8 +68,12 @@ const Layout = ({ children }) => {
                 <NavLink to="/tournaments" label="Tournaments" isActive={isActive("/tournaments")} />
                 <NavLink to="/teams" label="Teams" isActive={isActive("/teams")} />
                 <NavLink to="/players" label="Players" isActive={isActive("/players")} />
-
                 <NavLink to="/matches" label="Matches" isActive={isActive("/matches")} />
+              </div>
+              <div className="pt-4 border-t">
+                <h3 className="px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">Analytics</h3>
+                <NavLink to="/league-table" label="League Table" isActive={isActive("/league-table")} />
+                <NavLink to="/statistics" label="Statistics" isActive={isActive("/statistics")} />
               </div>
             </>
           )}

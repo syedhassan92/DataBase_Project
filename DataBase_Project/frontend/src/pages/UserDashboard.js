@@ -71,7 +71,7 @@ const UserDashboard = () => {
         <QuickLink href="/teams" label="⚽ View Teams" />
         <QuickLink href="/players" label="👥 View Players" />
         <QuickLink href="/matches" label="🎮 View Matches" />
-        <QuickLink href="/venues" label="🏟️ View Venues" />
+        <QuickLink href="/venues" label="�️ View Venues" />
       </div>
     </div>
   );

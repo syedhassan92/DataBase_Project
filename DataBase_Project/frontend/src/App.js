@@ -331,6 +331,13 @@ function AppContent() {
             </Layout>
           </ProtectedRoute>
         } />
+        <Route path="/league-table" element={
+          <ProtectedRoute>
+            <Layout>
+              <LeagueTable />
+            </Layout>
+          </ProtectedRoute>
+        } />
       </Routes>
       <ToastContainer
         notifications={notifications}

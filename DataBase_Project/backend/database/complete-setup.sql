@@ -13,7 +13,8 @@ CREATE TABLE USERACCOUNT (
     Password VARCHAR(255) NOT NULL,
     Role ENUM('User', 'Admin') NOT NULL DEFAULT 'User',
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- ADMIN Table (BCNF: UserID determines all attributes)
 CREATE TABLE ADMIN (
@@ -22,7 +23,8 @@ CREATE TABLE ADMIN (
     AdminName VARCHAR(100) NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (UserID) REFERENCES USERACCOUNT(UserID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- COACH Table (BCNF: CoachID determines all attributes)
 CREATE TABLE COACH (
@@ -32,7 +34,8 @@ CREATE TABLE COACH (
     Email VARCHAR(100) UNIQUE,
     Experience INT DEFAULT 0,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- REFEREE Table (BCNF: RefereeID determines all attributes)
 CREATE TABLE REFEREE (
@@ -42,7 +45,8 @@ CREATE TABLE REFEREE (
     Email VARCHAR(100) UNIQUE,
     AvailabilityStatus ENUM('Available', 'Unavailable') DEFAULT 'Available',
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- LEAGUE Table (BCNF: LeagueID determines all attributes)
 CREATE TABLE LEAGUE (
@@ -52,8 +56,10 @@ CREATE TABLE LEAGUE (
     StartDate DATE,
     EndDate DATE,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (AdminID) REFERENCES ADMIN(AdminID) ON DELETE CASCADE
-);
+    FOREIGN KEY (AdminID) REFERENCES ADMIN(AdminID) ON DELETE CASCADE,
+    CHECK (EndDate >= StartDate)
+)
+ENGINE=InnoDB;
 
 -- TOURNAMENT Table (BCNF: TournamentID determines all attributes)
 CREATE TABLE TOURNAMENT (
@@ -68,14 +74,16 @@ CREATE TABLE TOURNAMENT (
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (AdminID) REFERENCES ADMIN(AdminID) ON DELETE CASCADE,
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE SET NULL
-);
+)
+ENGINE=InnoDB;
 
 -- TEAM Table (BCNF: TeamID determines all attributes)
 CREATE TABLE TEAM (
     TeamID INT AUTO_INCREMENT PRIMARY KEY,
     TeamName VARCHAR(100) NOT NULL,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- TEAMLEAGUE Table (New: Associates teams with leagues and coaches - BCNF)
 -- A team can participate in multiple leagues, but each coach can only coach ONE team
@@ -91,7 +99,8 @@ CREATE TABLE TEAMLEAGUE (
     FOREIGN KEY (CoachID) REFERENCES COACH(CoachID) ON DELETE SET NULL,
     UNIQUE KEY unique_team_league (TeamID, LeagueID),
     UNIQUE KEY unique_coach (CoachID)
-);
+)
+ENGINE=InnoDB;
 
 -- TEAMSTATS Table (BCNF: Natural key (LeagueID, TeamID) as primary key)
 CREATE TABLE TEAMSTATS (
@@ -108,10 +117,12 @@ CREATE TABLE TEAMSTATS (
     PRIMARY KEY (LeagueID, TeamID),
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- Trigger to automatically populate TEAMSTATS when team is added to league
 DELIMITER //
+DROP TRIGGER IF EXISTS after_teamleague_insert//
 CREATE TRIGGER after_teamleague_insert
 AFTER INSERT ON TEAMLEAGUE
 FOR EACH ROW
@@ -131,7 +142,8 @@ CREATE TABLE TOURNAMENTTEAM (
     PRIMARY KEY (TournamentID, TeamID),
     FOREIGN KEY (TournamentID) REFERENCES TOURNAMENT(TournamentID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- PLAYER Table (BCNF: PlayerID determines all attributes)
 CREATE TABLE PLAYER (
@@ -139,7 +151,8 @@ CREATE TABLE PLAYER (
     PlayerName VARCHAR(100) NOT NULL,
     PlayerRole VARCHAR(50),
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- PLAYERTEAM Table (New: Associates players with teams and contract details)
 CREATE TABLE PLAYERTEAM (
@@ -154,24 +167,8 @@ CREATE TABLE PLAYERTEAM (
     FOREIGN KEY (PlayerID) REFERENCES PLAYER(PlayerID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
     UNIQUE KEY unique_current_player (PlayerID, IsCurrent)
-);
-
--- PLAYERSTATS Table (BCNF: StatsID determines all attributes)
-CREATE TABLE PLAYERSTATS (
-    StatsID INT AUTO_INCREMENT PRIMARY KEY,
-    PlayerID INT NOT NULL,
-    MatchID INT NOT NULL,
-    LeagueID INT NOT NULL,
-    MatchesPlayed INT DEFAULT 0,
-    Wins INT DEFAULT 0,
-    Goals INT DEFAULT 0,
-    Assists INT DEFAULT 0,
-    Rating DECIMAL(3,2) DEFAULT 0.00,
-    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (PlayerID) REFERENCES PLAYER(PlayerID) ON DELETE CASCADE,
-    FOREIGN KEY (MatchID) REFERENCES `MATCH`(MatchID) ON DELETE CASCADE,
-    FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE
-);
+)
+ENGINE=InnoDB;
 
 -- VENUE Table (BCNF: VenueID determines all attributes)
 CREATE TABLE VENUE (
@@ -181,7 +178,8 @@ CREATE TABLE VENUE (
     Capacity INT,
     IsAvailable BOOLEAN DEFAULT TRUE,
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)
+ENGINE=InnoDB;
 
 -- MATCH Table (BCNF: MatchID determines all attributes)
 CREATE TABLE `MATCH` (
@@ -209,7 +207,8 @@ CREATE TABLE `MATCH` (
     FOREIGN KEY (WinnerTeamID) REFERENCES TEAM(TeamID) ON DELETE SET NULL,
     CHECK (Team1ID != Team2ID),
     CHECK ((LeagueID IS NOT NULL AND TournamentID IS NULL) OR (LeagueID IS NULL AND TournamentID IS NOT NULL))
-);
+)
+ENGINE=InnoDB;
 
 -- MATCHSTATS Table (BCNF: MatchStatsID determines all attributes)
 CREATE TABLE MATCHSTATS (
@@ -222,7 +221,26 @@ CREATE TABLE MATCHSTATS (
     FOREIGN KEY (MatchID) REFERENCES `MATCH`(MatchID) ON DELETE CASCADE,
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
     UNIQUE KEY unique_match_team (MatchID, TeamID)
-);
+)
+ENGINE=InnoDB;
+
+-- PLAYERSTATS Table (BCNF: StatsID determines all attributes)
+CREATE TABLE PLAYERSTATS (
+    StatsID INT AUTO_INCREMENT PRIMARY KEY,
+    PlayerID INT NOT NULL,
+    MatchID INT NOT NULL,
+    LeagueID INT NOT NULL,
+    MatchesPlayed INT DEFAULT 0,
+    Wins INT DEFAULT 0,
+    Goals INT DEFAULT 0,
+    Assists INT DEFAULT 0,
+    Rating DECIMAL(3,2) DEFAULT 0.00,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (PlayerID) REFERENCES PLAYER(PlayerID) ON DELETE CASCADE,
+    FOREIGN KEY (MatchID) REFERENCES `MATCH`(MatchID) ON DELETE CASCADE,
+    FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE
+)
+ENGINE=InnoDB;
 
 -- TRANSFER Table (BCNF: TransferID determines all attributes)
 CREATE TABLE TRANSFER (
@@ -239,10 +257,12 @@ CREATE TABLE TRANSFER (
     FOREIGN KEY (ToTeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE,
     FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
     CHECK (FromTeamID != ToTeamID)
-);
+)
+ENGINE=InnoDB;
 
 -- Trigger to automatically update TEAMSTATS when a match is completed
 DELIMITER //
+DROP TRIGGER IF EXISTS after_match_update//
 CREATE TRIGGER after_match_update
 AFTER UPDATE ON `MATCH`
 FOR EACH ROW
@@ -275,6 +295,7 @@ DELIMITER ;
 
 -- Trigger to prevent a player from joining multiple teams simultaneously
 DELIMITER //
+DROP TRIGGER IF EXISTS before_playerteam_insert//
 CREATE TRIGGER before_playerteam_insert
 BEFORE INSERT ON PLAYERTEAM
 FOR EACH ROW
@@ -291,6 +312,7 @@ BEGIN
   END IF;
 END//
 
+DROP TRIGGER IF EXISTS before_playerteam_update//
 CREATE TRIGGER before_playerteam_update
 BEFORE UPDATE ON PLAYERTEAM
 FOR EACH ROW
@@ -311,6 +333,7 @@ DELIMITER ;
 
 -- Trigger to enforce single admin constraint
 DELIMITER //
+DROP TRIGGER IF EXISTS before_admin_insert//
 CREATE TRIGGER before_admin_insert
 BEFORE INSERT ON ADMIN
 FOR EACH ROW
@@ -422,6 +445,15 @@ INSERT INTO PLAYERTEAM (PlayerID, TeamID, ContractDetails, StartDate, IsCurrent)
 (8, 4, 'Contract until 2027', '2023-06-01', TRUE),
 (9, 5, 'Contract until 2025', '2021-01-01', TRUE);
 
+-- Insert Matches (with Team1ID and Team2ID)
+INSERT INTO `MATCH` (LeagueID, TournamentID, Team1ID, Team2ID, VenueID, RefereeID, MatchDate, MatchTime, Team1Score, Team2Score, Status, WinnerTeamID, Highlights) VALUES
+(1, NULL, 1, 2, 1, 1, '2024-03-15', '19:00:00', 2, 1, 'Completed', 1, 'Exciting match with late winner'),
+(1, NULL, 2, 3, 2, 2, '2024-03-20', '20:00:00', 1, 1, 'Completed', NULL, 'Draw with penalties on both sides'),
+(NULL, 1, 1, 3, 3, 4, '2024-06-15', '18:00:00', 3, 2, 'Completed', 1, 'High scoring thriller'),
+(2, NULL, 4, 5, 1, 1, '2024-04-10', '19:30:00', 0, 0, 'Scheduled', NULL, NULL),
+(NULL, 2, 4, 5, 2, 4, '2024-11-20', '20:00:00', 0, 0, 'Scheduled', NULL, NULL);
+
+-- Insert Player Stats
 INSERT INTO PLAYERSTATS (PlayerID, MatchID, LeagueID, MatchesPlayed, Wins, Goals, Assists, Rating) VALUES
 (1, 1, 1, 28, 18, 22, 8, 8.50),
 (2, 2, 1, 26, 17, 5, 12, 7.80),
@@ -432,14 +464,6 @@ INSERT INTO PLAYERSTATS (PlayerID, MatchID, LeagueID, MatchesPlayed, Wins, Goals
 (7, 2, 1, 22, 12, 1, 2, 7.30),
 (8, 3, 2, 20, 9, 15, 5, 8.00),
 (9, 4, 2, 21, 7, 6, 7, 7.40);
-
--- Insert Matches (with Team1ID and Team2ID)
-INSERT INTO `MATCH` (LeagueID, TournamentID, Team1ID, Team2ID, VenueID, RefereeID, MatchDate, MatchTime, Team1Score, Team2Score, Status, WinnerTeamID, Highlights) VALUES
-(1, NULL, 1, 2, 1, 1, '2024-03-15', '19:00:00', 2, 1, 'Completed', 1, 'Exciting match with late winner'),
-(1, NULL, 2, 3, 2, 2, '2024-03-20', '20:00:00', 1, 1, 'Completed', NULL, 'Draw with penalties on both sides'),
-(NULL, 1, 1, 3, 3, 4, '2024-06-15', '18:00:00', 3, 2, 'Completed', 1, 'High scoring thriller'),
-(2, NULL, 4, 5, 1, 1, '2024-04-10', '19:30:00', 0, 0, 'Scheduled', NULL, NULL),
-(NULL, 2, 4, 5, 2, 4, '2024-11-20', '20:00:00', 0, 0, 'Scheduled', NULL, NULL);
 
 -- Insert Transfers (simplified - direct player reference)
 INSERT INTO TRANSFER (PlayerID, FromTeamID, ToTeamID, LeagueID, TransferDate, TransferType) VALUES

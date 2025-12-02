@@ -98,10 +98,10 @@ const LeagueTable = () => {
             id="league-select"
             value={selectedLeague}
             onChange={(e) => setSelectedLeague(e.target.value)}
-            className="w-full md:w-96 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="w-full md:w-96 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white text-gray-900"
           >
             {leagues.map((league) => (
-              <option key={league.LeagueID} value={league.LeagueID}>
+              <option key={league.LeagueID} value={league.LeagueID} className="bg-white text-gray-900">
                 {league.LeagueName}
               </option>
             ))}
