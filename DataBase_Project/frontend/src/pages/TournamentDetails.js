@@ -15,15 +15,17 @@ const TournamentDetails = () => {
 
   useEffect(() => {
     fetchTournamentData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchTournamentData = async () => {
     try {
       setLoading(true);
-      const [tournamentData, teamsData, matchesData] = await Promise.all([
+      const [tournamentData, teamsData, matchesData, standingsData] = await Promise.all([
         apiService.tournaments.getById(id),
         apiService.tournaments.getTeams(id),
-        apiService.matches.getAll()
+        apiService.matches.getAll(),
+        apiService.statistics.getTournamentStandings(id)
       ]);
 
       setTournament(tournamentData);
@@ -31,12 +33,24 @@ const TournamentDetails = () => {
       
       // Filter matches for this tournament
       const tournamentMatches = matchesData.filter(m => 
-        (m.TournamentID || m.tournamentId) == id
+        parseInt(m.TournamentID || m.tournamentId) === parseInt(id)
       );
       setMatches(tournamentMatches);
 
-      // Calculate standings
-      calculateStandings(tournamentMatches, teamsData);
+      // Set standings from backend
+      const formattedStandings = standingsData.map(team => ({
+        teamId: team.TeamID,
+        teamName: team.TeamName,
+        played: team.MatchesPlayed,
+        won: team.Wins,
+        drawn: team.Draws,
+        lost: team.Losses,
+        goalsFor: team.GoalsFor,
+        goalsAgainst: team.GoalsFor - team.GoalDifference,
+        goalDifference: team.GoalDifference,
+        points: team.Points
+      }));
+      setStandings(formattedStandings);
 
       // Get top scorers for this tournament
       await fetchTopScorers();
@@ -50,79 +64,12 @@ const TournamentDetails = () => {
 
   const fetchTopScorers = async () => {
     try {
-      // Note: This would need a backend endpoint to filter by tournament
-      const scorers = await apiService.statistics.getTopScorers({ limit: 10 });
-      setTopScorers(scorers.slice(0, 5));
+      const scorers = await apiService.statistics.getTournamentTopPlayers({ tournamentId: id, limit: 5 });
+      setTopScorers(scorers);
     } catch (error) {
       console.error('Error fetching top scorers:', error);
+      setTopScorers([]);
     }
-  };
-
-  const calculateStandings = (matchesData, teamsData) => {
-    const teamStats = {};
-
-    // Initialize stats for all teams
-    teamsData.forEach(team => {
-      teamStats[team.TeamID] = {
-        teamId: team.TeamID,
-        teamName: team.TeamName,
-        played: 0,
-        won: 0,
-        drawn: 0,
-        lost: 0,
-        goalsFor: 0,
-        goalsAgainst: 0,
-        goalDifference: 0,
-        points: 0
-      };
-    });
-
-    // Calculate stats from completed matches
-    matchesData
-      .filter(m => m.Status === 'Completed' || m.status === 'completed')
-      .forEach(match => {
-        const team1Id = match.Team1ID || match.team1Id;
-        const team2Id = match.Team2ID || match.team2Id;
-        const team1Score = match.Team1Score || match.homeScore || 0;
-        const team2Score = match.Team2Score || match.awayScore || 0;
-
-        if (teamStats[team1Id] && teamStats[team2Id]) {
-          teamStats[team1Id].played++;
-          teamStats[team2Id].played++;
-          teamStats[team1Id].goalsFor += team1Score;
-          teamStats[team1Id].goalsAgainst += team2Score;
-          teamStats[team2Id].goalsFor += team2Score;
-          teamStats[team2Id].goalsAgainst += team1Score;
-
-          if (team1Score > team2Score) {
-            teamStats[team1Id].won++;
-            teamStats[team1Id].points += 3;
-            teamStats[team2Id].lost++;
-          } else if (team2Score > team1Score) {
-            teamStats[team2Id].won++;
-            teamStats[team2Id].points += 3;
-            teamStats[team1Id].lost++;
-          } else {
-            teamStats[team1Id].drawn++;
-            teamStats[team2Id].drawn++;
-            teamStats[team1Id].points += 1;
-            teamStats[team2Id].points += 1;
-          }
-
-          teamStats[team1Id].goalDifference = teamStats[team1Id].goalsFor - teamStats[team1Id].goalsAgainst;
-          teamStats[team2Id].goalDifference = teamStats[team2Id].goalsFor - teamStats[team2Id].goalsAgainst;
-        }
-      });
-
-    const standingsArray = Object.values(teamStats)
-      .filter(team => team.played > 0)
-      .sort((a, b) => {
-        if (b.points !== a.points) return b.points - a.points;
-        if (b.goalDifference !== a.goalDifference) return b.goalDifference - a.goalDifference;
-        return b.goalsFor - a.goalsFor;
-      });
-
-    setStandings(standingsArray);
   };
 
   if (loading) {

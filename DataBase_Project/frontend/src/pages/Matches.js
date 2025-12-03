@@ -19,12 +19,10 @@ const Matches = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showStatsModal, setShowStatsModal] = useState(false);
-  const [showPlayerStatsModal, setShowPlayerStatsModal] = useState(false);
   const [editingMatch, setEditingMatch] = useState(null);
   const [team1Players, setTeam1Players] = useState([]);
   const [team2Players, setTeam2Players] = useState([]);
   const [playerStats, setPlayerStats] = useState([]);
-  const [matchScores, setMatchScores] = useState({ team1Score: 0, team2Score: 0 });
   const [formData, setFormData] = useState({
     team1Id: '',
     team2Id: '',
@@ -34,20 +32,42 @@ const Matches = () => {
     refereeId: '',
     matchDate: '',
     matchTime: '',
-    status: 'Scheduled'
-  });
-  const [statsData, setStatsData] = useState({
+    status: 'Scheduled',
     team1Score: '',
     team2Score: '',
-    team1Possession: '',
-    team2Possession: '',
     winnerTeamId: '',
-    highlights: ''
+    highlights: '',
+    team1Possession: '',
+    team2Possession: ''
   });
+
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  const fetchPlayersForMatch = async () => {
+    if (!formData.team1Id || !formData.team2Id) return;
+    
+    try {
+      const [team1PlayersData, team2PlayersData] = await Promise.all([
+        apiService.players.getAll({ teamId: formData.team1Id }),
+        apiService.players.getAll({ teamId: formData.team2Id })
+      ]);
+      setTeam1Players(team1PlayersData);
+      setTeam2Players(team2PlayersData);
+    } catch (error) {
+      console.error('Error fetching players:', error);
+    }
+  };
+
+  useEffect(() => {
+    // Fetch players when teams are selected and status is Completed
+    if (formData.status === 'Completed' && formData.team1Id && formData.team2Id) {
+      fetchPlayersForMatch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.team1Id, formData.team2Id, formData.status]);
 
   const fetchData = async () => {
     try {
@@ -128,9 +148,16 @@ const Matches = () => {
       refereeId: '',
       matchDate: '',
       matchTime: '',
-      status: 'Scheduled'
+      status: 'Scheduled',
+      team1Score: '',
+      team2Score: '',
+      winnerTeamId: '',
+      highlights: '',
+      team1Possession: '',
+      team2Possession: ''
     });
     setFilteredTeams(teams);
+    setPlayerStats([]);
     setShowModal(true);
   };
 
@@ -157,7 +184,13 @@ const Matches = () => {
       refereeId: match.RefereeID || match.refereeId || '',
       matchDate: matchDate,
       matchTime: matchTime,
-      status: match.Status || match.status || 'Scheduled'
+      status: match.Status || match.status || 'Scheduled',
+      team1Score: match.Team1Score || match.team1Score || '',
+      team2Score: match.Team2Score || match.team2Score || '',
+      winnerTeamId: match.WinnerTeamID || match.winnerTeamId || '',
+      highlights: match.Highlights || match.highlights || '',
+      team1Possession: '',
+      team2Possession: ''
     });
 
     // Fetch filtered teams based on league or tournament
@@ -167,6 +200,7 @@ const Matches = () => {
     // Let them remain as is, user can change date/time to trigger refresh if needed
     setVenues(allVenues);
     setReferees(allReferees);
+    setPlayerStats([]);
     setShowModal(true);
   };
 
@@ -198,12 +232,14 @@ const Matches = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // If changing status to Completed, show stats modal
-    if (editingMatch && formData.status === 'Completed' &&
-      (editingMatch.Status !== 'Completed' || !editingMatch.Team1Score)) {
-      setShowModal(false);
-      setShowStatsModal(true);
-      return;
+    // Validate possession if status is Completed
+    if (formData.status === 'Completed' && (formData.team1Possession || formData.team2Possession)) {
+      const team1Poss = parseInt(formData.team1Possession) || 0;
+      const team2Poss = parseInt(formData.team2Possession) || 0;
+      if (team1Poss + team2Poss > 100) {
+        alert('Error: Total possession cannot exceed 100%. Please adjust the possession values.');
+        return;
+      }
     }
 
     try {
@@ -213,78 +249,58 @@ const Matches = () => {
         leagueId: formData.leagueId || null,
         tournamentId: formData.tournamentId || null,
         venueId: formData.venueId || null,
-        refereeId: formData.refereeId || null
+        refereeId: formData.refereeId || null,
+        team1Possession: formData.team1Possession || 0,
+        team2Possession: formData.team2Possession || 0
       };
 
+      let matchId;
       if (editingMatch) {
         await apiService.matches.update(editingMatch.MatchID || editingMatch.id, cleanedData);
+        matchId = editingMatch.MatchID || editingMatch.id;
         alert('Match updated successfully');
       } else {
-        await apiService.matches.create(cleanedData);
+        const createdMatch = await apiService.matches.create(cleanedData);
+        matchId = createdMatch.matchId || createdMatch.MatchID || createdMatch.id || createdMatch.insertId;
+        
+        // If creating a completed match with player stats, save them
+        if (formData.status === 'Completed' && playerStats.length > 0) {
+          try {
+            const validPlayerStats = playerStats.filter(stat => stat.playerId);
+            if (validPlayerStats.length > 0) {
+              await apiService.post('/stats/players', {
+                matchId: matchId,
+                playerStats: validPlayerStats.map(stat => ({
+                  playerId: stat.playerId,
+                  goals: parseInt(stat.goals) || 0,
+                  assists: parseInt(stat.assists) || 0,
+                  rating: parseFloat(stat.rating) || 0
+                }))
+              });
+              console.log('Player stats submitted successfully');
+            }
+          } catch (statsError) {
+            console.error('Failed to save player stats:', statsError);
+            alert('Match created successfully, but failed to save player stats: ' + statsError.message);
+            setShowModal(false);
+            setPlayerStats([]);
+            fetchData();
+            return;
+          }
+        }
+        
         alert('Match scheduled successfully');
       }
+
       setShowModal(false);
+      setPlayerStats([]); // Clear player stats
       fetchData();
     } catch (error) {
       alert('Failed to save match: ' + error.message);
     }
   };
 
-  const handleStatsSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const team1Poss = statsData.team1Possession ? parseInt(statsData.team1Possession) : 0;
-      const team2Poss = statsData.team2Possession ? parseInt(statsData.team2Possession) : 0;
 
-      // Validate possession sum
-      if (team1Poss + team2Poss > 100) {
-        alert('Error: Total possession cannot exceed 100%. Please adjust the possession values.');
-        return;
-      }
-
-      const updateData = {
-        ...formData,
-        team1Score: parseInt(statsData.team1Score),
-        team2Score: parseInt(statsData.team2Score),
-        team1Possession: team1Poss,
-        team2Possession: team2Poss,
-        winnerTeamId: statsData.winnerTeamId || null,
-        highlights: statsData.highlights || null,
-        status: 'Completed'
-      };
-
-      await apiService.matches.update(editingMatch.MatchID || editingMatch.id, updateData);
-
-      // Try to fetch players from both teams for player stats
-      try {
-        const [team1PlayersData, team2PlayersData] = await Promise.all([
-          apiService.get(`/players?teamId=${formData.team1Id}`),
-          apiService.get(`/players?teamId=${formData.team2Id}`)
-        ]);
-
-        setTeam1Players(team1PlayersData);
-        setTeam2Players(team2PlayersData);
-        setPlayerStats([]);
-        setMatchScores({
-          team1Score: parseInt(statsData.team1Score),
-          team2Score: parseInt(statsData.team2Score)
-        });
-
-        // Show player stats modal
-        setShowStatsModal(false);
-        setShowPlayerStatsModal(true);
-      } catch (playerError) {
-        // If player fetch fails, just complete without player stats
-        console.error('Could not fetch players:', playerError);
-        alert('Match completed successfully! (Player stats not available)');
-        setShowStatsModal(false);
-        setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
-        fetchData();
-      }
-    } catch (error) {
-      alert('Failed to update match stats: ' + error.message);
-    }
-  };
 
   if (loading) return <div className="text-center py-8">Loading matches...</div>;
 
@@ -349,13 +365,15 @@ const Matches = () => {
 
                 {isAdmin && (
                   <div className="flex gap-2 ml-6">
-                    <button
-                      onClick={() => handleEdit(match)}
-                      className="text-yellow-600 hover:text-yellow-800 p-2 hover:bg-yellow-50 rounded"
-                      title="Edit"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
+                    {(match.Status !== 'Completed' && match.status !== 'completed') && (
+                      <button
+                        onClick={() => handleEdit(match)}
+                        className="text-yellow-600 hover:text-yellow-800 p-2 hover:bg-yellow-50 rounded"
+                        title="Edit"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       onClick={() => handleDelete(match.MatchID || match.id)}
                       className="text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded"
@@ -486,11 +504,12 @@ const Matches = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Venue
+                    Venue {formData.status === 'Completed' && '*'}
                   </label>
                   <select
                     value={formData.venueId}
                     onChange={(e) => setFormData({ ...formData, venueId: e.target.value })}
+                    required={formData.status === 'Completed'}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                   >
                     <option value="">Select Venue</option>
@@ -500,15 +519,19 @@ const Matches = () => {
                       </option>
                     ))}
                   </select>
+                  {formData.status === 'Completed' && (
+                    <p className="text-xs text-red-600 mt-1">Required for completed matches</p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Referee
+                    Referee {formData.status === 'Completed' && '*'}
                   </label>
                   <select
                     value={formData.refereeId}
                     onChange={(e) => setFormData({ ...formData, refereeId: e.target.value })}
+                    required={formData.status === 'Completed'}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                   >
                     <option value="">Select Referee</option>
@@ -518,6 +541,9 @@ const Matches = () => {
                       </option>
                     ))}
                   </select>
+                  {formData.status === 'Completed' && (
+                    <p className="text-xs text-red-600 mt-1">Required for completed matches</p>
+                  )}
                 </div>
 
                 <div>
@@ -557,18 +583,345 @@ const Matches = () => {
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                   >
-                    <option value="Scheduled">Scheduled</option>
-                    <option value="Live">Live</option>
-                    <option value="Completed">Completed</option>
-                    <option value="Cancelled">Cancelled</option>
+                    {(() => {
+                      const currentDate = new Date();
+                      const matchDate = formData.matchDate ? new Date(formData.matchDate) : null;
+                      const matchTime = formData.matchTime || '';
+                      
+                      // Reset time for date comparison
+                      if (matchDate) {
+                        currentDate.setHours(0, 0, 0, 0);
+                        matchDate.setHours(0, 0, 0, 0);
+                      }
+                      
+                      const currentTimeString = new Date().toTimeString().slice(0, 5);
+                      
+                      // Match is in the past
+                      if (matchDate && matchDate < currentDate) {
+                        return (
+                          <>
+                            <option value="Completed">Completed</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </>
+                        );
+                      }
+                      // Match is today but time has passed or is equal to current time
+                      else if (matchDate && matchDate.getTime() === currentDate.getTime() && matchTime && matchTime <= currentTimeString) {
+                        return (
+                          <>
+                            <option value="Completed">Completed</option>
+                            <option value="Live">Live</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </>
+                        );
+                      }
+                      // Future match or match is today with time still in the future
+                      else {
+                        return (
+                          <>
+                            <option value="Scheduled">Scheduled</option>
+                            <option value="Live">Live</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </>
+                        );
+                      }
+                    })()}
                   </select>
+                  {(() => {
+                    const currentDate = new Date();
+                    const matchDate = formData.matchDate ? new Date(formData.matchDate) : null;
+                    const matchTime = formData.matchTime || '';
+                    
+                    if (matchDate) {
+                      currentDate.setHours(0, 0, 0, 0);
+                      matchDate.setHours(0, 0, 0, 0);
+                      
+                      const currentTimeString = new Date().toTimeString().slice(0, 5);
+                      
+                      if (matchDate < currentDate) {
+                        return <p className="text-xs text-amber-600 mt-1">⚠️ Past date: Only Completed or Cancelled allowed</p>;
+                      } else if (matchDate.getTime() === currentDate.getTime() && matchTime && matchTime <= currentTimeString) {
+                        return <p className="text-xs text-amber-600 mt-1">⚠️ Time has passed: Scheduled status not allowed</p>;
+                      }
+                    }
+                    return null;
+                  })()}
                 </div>
               </div>
+
+              {/* Show score fields if status is Completed */}
+              {formData.status === 'Completed' && (
+                <div className="border-t border-gray-200 pt-6 mt-6">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Match Results (Required for Completed Status)</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Team 1 Score *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={formData.team1Score || ''}
+                        onChange={(e) => setFormData({ ...formData, team1Score: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Team 2 Score *
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        required
+                        value={formData.team2Score || ''}
+                        onChange={(e) => setFormData({ ...formData, team2Score: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Team 1 Possession (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={formData.team1Possession || ''}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 0;
+                          if (value >= 0 && value <= 100) {
+                            setFormData({ ...formData, team1Possession: e.target.value });
+                          }
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                        placeholder="0-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Team 2 Possession (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={formData.team2Possession || ''}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 0;
+                          if (value >= 0 && value <= 100) {
+                            setFormData({ ...formData, team2Possession: e.target.value });
+                          }
+                        }}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                        placeholder="0-100"
+                      />
+                    </div>
+                  </div>
+                  {(formData.team1Possession || formData.team2Possession) && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Total: {(parseInt(formData.team1Possession) || 0) + (parseInt(formData.team2Possession) || 0)}%
+                      {(parseInt(formData.team1Possession) || 0) + (parseInt(formData.team2Possession) || 0) > 100 && (
+                        <span className="text-red-600 ml-2">⚠ Total cannot exceed 100%</span>
+                      )}
+                    </p>
+                  )}
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Winner Team
+                    </label>
+                    <select
+                      value={formData.winnerTeamId || ''}
+                      onChange={(e) => setFormData({ ...formData, winnerTeamId: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    >
+                      <option value="">Draw (No Winner)</option>
+                      {formData.team1Id && (
+                        <option value={formData.team1Id}>
+                          {filteredTeams.find(t => t.TeamID === parseInt(formData.team1Id))?.TeamName || 'Team 1'}
+                        </option>
+                      )}
+                      {formData.team2Id && (
+                        <option value={formData.team2Id}>
+                          {filteredTeams.find(t => t.TeamID === parseInt(formData.team2Id))?.TeamName || 'Team 2'}
+                        </option>
+                      )}
+                    </select>
+                  </div>
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Highlights
+                    </label>
+                    <textarea
+                      value={formData.highlights || ''}
+                      onChange={(e) => setFormData({ ...formData, highlights: e.target.value })}
+                      rows="3"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                      placeholder="Enter match highlights..."
+                    />
+                  </div>
+
+                  {/* Player Stats Section - Only show when status is Completed */}
+                  {formData.status === 'Completed' && formData.team1Id && formData.team2Id && (
+                  <div className="border-t border-gray-200 pt-6 mt-6">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-md font-semibold text-gray-900">Player Statistics (Optional)</h4>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPlayerStats([...playerStats, {
+                            playerId: '',
+                            goals: '',
+                            assists: '',
+                            rating: ''
+                          }]);
+                        }}
+                        className="text-sm px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                      >
+                        + Add Player
+                      </button>
+                    </div>
+
+                    {playerStats.length === 0 && (
+                      <p className="text-sm text-gray-500 italic mb-4">No player statistics added. Click "Add Player" to add stats.</p>
+                    )}
+
+                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                      {playerStats.map((stat, index) => (
+                        <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
+                          <div className="flex justify-between items-start mb-3">
+                            <span className="text-sm font-medium text-gray-700">Player {index + 1}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newStats = playerStats.filter((_, i) => i !== index);
+                                setPlayerStats(newStats);
+                              }}
+                              className="text-red-600 hover:text-red-800 text-sm"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Player *
+                              </label>
+                              <select
+                                value={stat.playerId}
+                                onChange={(e) => {
+                                  const newStats = [...playerStats];
+                                  newStats[index].playerId = e.target.value;
+                                  setPlayerStats(newStats);
+                                }}
+                                required
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                              >
+                                <option value="">Select Player</option>
+                                {formData.team1Id && (
+                                  <optgroup label={`${filteredTeams.find(t => t.TeamID === parseInt(formData.team1Id))?.TeamName || 'Team 1'} Players`}>
+                                    {team1Players.map(player => (
+                                      <option key={player.PlayerID} value={player.PlayerID}>
+                                        {player.PlayerName}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {formData.team2Id && (
+                                  <optgroup label={`${filteredTeams.find(t => t.TeamID === parseInt(formData.team2Id))?.TeamName || 'Team 2'} Players`}>
+                                    {team2Players.map(player => (
+                                      <option key={player.PlayerID} value={player.PlayerID}>
+                                        {player.PlayerName}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Goals
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stat.goals}
+                                onChange={(e) => {
+                                  const newStats = [...playerStats];
+                                  newStats[index].goals = e.target.value;
+                                  setPlayerStats(newStats);
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                                placeholder="0"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Assists
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={stat.assists}
+                                onChange={(e) => {
+                                  const newStats = [...playerStats];
+                                  newStats[index].assists = e.target.value;
+                                  setPlayerStats(newStats);
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                                placeholder="0"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Rating (0-10)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10"
+                                step="0.1"
+                                value={stat.rating}
+                                onChange={(e) => {
+                                  const value = parseFloat(e.target.value);
+                                  if ((value >= 0 && value <= 10) || e.target.value === '') {
+                                    const newStats = [...playerStats];
+                                    newStats[index].rating = e.target.value;
+                                    setPlayerStats(newStats);
+                                  }
+                                }}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                                placeholder="0.0"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {playerStats.length > 0 && (
+                      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-xs text-blue-900">
+                          <strong>Note:</strong> Player statistics are optional. You can add them now or update them later. 
+                          Total goals from all players should match team scores.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex gap-3 mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    setShowModal(false);
+                    setPlayerStats([]);
+                  }}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
                 >
                   Cancel
@@ -585,238 +938,7 @@ const Matches = () => {
         </div>
       )}
 
-      {/* Match Stats Modal - Only render if admin */}
-      {showStatsModal && editingMatch && isAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-gray-900">Complete Match Stats</h2>
-              <button
-                onClick={() => {
-                  setShowStatsModal(false);
-                  setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
 
-            <form onSubmit={handleStatsSubmit} className="p-6">
-              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm font-semibold text-blue-900">
-                  {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} vs {teams.find(t => t.TeamID === formData.team2Id)?.TeamName}
-                </p>
-                <p className="text-xs text-blue-700 mt-1">
-                  {formData.matchDate && new Date(formData.matchDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} Score *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    value={statsData.team1Score}
-                    onChange={(e) => setStatsData({ ...statsData, team1Score: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    placeholder="0"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {teams.find(t => t.TeamID === formData.team2Id)?.TeamName} Score *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="0"
-                    value={statsData.team2Score}
-                    onChange={(e) => setStatsData({ ...statsData, team2Score: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    placeholder="0"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} Possession (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={statsData.team1Possession}
-                    onChange={(e) => setStatsData({ ...statsData, team1Possession: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    placeholder="0"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    {teams.find(t => t.TeamID === formData.team2Id)?.TeamName} Possession (%)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={statsData.team2Possession}
-                    onChange={(e) => setStatsData({ ...statsData, team2Possession: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    placeholder="0"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Winner Team
-                  </label>
-                  <select
-                    value={statsData.winnerTeamId}
-                    onChange={(e) => setStatsData({ ...statsData, winnerTeamId: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                  >
-                    <option value="">Draw / No Winner</option>
-                    <option value={formData.team1Id}>{teams.find(t => t.TeamID === formData.team1Id)?.TeamName}</option>
-                    <option value={formData.team2Id}>{teams.find(t => t.TeamID === formData.team2Id)?.TeamName}</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Match Highlights
-                  </label>
-                  <textarea
-                    value={statsData.highlights}
-                    onChange={(e) => setStatsData({ ...statsData, highlights: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                    rows="4"
-                    placeholder="Enter match highlights, key moments, or summary..."
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowStatsModal(false);
-                    setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                >
-                  Complete Match
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Player Stats Modal - Only render if admin */}
-      {showPlayerStatsModal && isAdmin && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
-              <h2 className="text-2xl font-bold text-gray-900">Enter Player Statistics</h2>
-              <button
-                onClick={() => {
-                  setShowPlayerStatsModal(false);
-                  setPlayerStats([]);
-                  setStatsData({ team1Score: '', team2Score: '', team1Possession: '', team2Possession: '', winnerTeamId: '', highlights: '' });
-                  fetchData();
-                }}
-                className="p-2 hover:bg-gray-100 rounded-lg transition"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                <p className="text-sm font-semibold text-yellow-900 mb-2">
-                  Match Score: {teams.find(t => t.TeamID === formData.team1Id)?.TeamName} {matchScores.team1Score} - {matchScores.team2Score} {teams.find(t => t.TeamID === formData.team2Id)?.TeamName}
-                </p>
-                <p className="text-xs text-yellow-700">
-                  <strong>Important:</strong> Total goals for each team cannot exceed their score. Total assists must equal total goals (every goal needs an assist).
-                </p>
-              </div>
-
-              {/* Player Stats Entries */}
-              <div className="space-y-4 mb-6">
-                {playerStats.map((stat, index) => (
-                  <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Player *
-                        </label>
-                        <select
-                          value={stat.playerId}
-                          onChange={(e) => {
-                            const newStats = [...playerStats];
-                            newStats[index].playerId = e.target.value;
-                            setPlayerStats(newStats);
-                          }}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                        >
-                          <option value="">Select Player</option>
-                          <optgroup label={teams.find(t => t.TeamID === formData.team1Id)?.TeamName}>
-                            {team1Players.map(player => (
-                              <option key={player.PlayerID} value={player.PlayerID}>
-                                {player.PlayerName}
-                              </option>
-                            ))}
-                          </optgroup>
-                          <optgroup label={teams.find(t => t.TeamID === formData.team2Id)?.TeamName}>
-                            {team2Players.map(player => (
-                              <option key={player.PlayerID} value={player.PlayerID}>
-                                {player.PlayerName}
-                              </option>
-                            ))}
-                          </optgroup>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Goals
-                        </label>
-                        <input
-                          type="number"
-                          min="0"
-                          value={stat.goals}
-                          onChange={(e) => {
-                            const newStats = [...playerStats];
-                            newStats[index].goals = e.target.value;
-                            setPlayerStats(newStats);
-                          }}
-                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-                          placeholder="0"
-                        />
-                      </div>
-
-                      {/* Add other stat fields here if needed */}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

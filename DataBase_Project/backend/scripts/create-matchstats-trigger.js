@@ -2,13 +2,13 @@ const db = require('../config/database');
 
 async function createMatchStatsTrigger() {
   try {
-    console.log('Creating trigger to update TEAMSTATS when match is completed...\n');
+    console.log('Creating trigger to update LEAGUETEAMSTATS when match is completed...\n');
 
     // Drop trigger if it exists
     await db.query('DROP TRIGGER IF EXISTS after_match_update');
     console.log('✓ Dropped existing trigger (if any)');
 
-    // Create trigger to update TEAMSTATS when match is updated to Completed
+    // Create trigger to update LEAGUETEAMSTATS when match is updated to Completed
     await db.query(`
       CREATE TRIGGER after_match_update
       AFTER UPDATE ON \`MATCH\`
@@ -20,7 +20,7 @@ async function createMatchStatsTrigger() {
           
           -- Update Team1 stats
           IF NEW.LeagueID IS NOT NULL THEN
-            UPDATE TEAMSTATS 
+            UPDATE LEAGUETEAMSTATS 
             SET 
               MatchesPlayed = MatchesPlayed + 1,
               GoalsFor = GoalsFor + NEW.Team1Score,
@@ -36,7 +36,7 @@ async function createMatchStatsTrigger() {
             WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team1ID;
             
             -- Update Team2 stats
-            UPDATE TEAMSTATS 
+            UPDATE LEAGUETEAMSTATS 
             SET 
               MatchesPlayed = MatchesPlayed + 1,
               GoalsFor = GoalsFor + NEW.Team2Score,

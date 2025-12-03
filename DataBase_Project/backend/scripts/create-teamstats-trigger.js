@@ -14,7 +14,7 @@ async function createTeamStatsTrigger() {
       AFTER INSERT ON TEAMLEAGUE
       FOR EACH ROW
       BEGIN
-        INSERT INTO TEAMSTATS 
+        INSERT INTO LEAGUETEAMSTATS 
         (LeagueID, TeamID, Wins, Losses, Draws, Points, GoalsFor, GoalDifference, MatchesPlayed)
         VALUES (NEW.LeagueID, NEW.TeamID, 0, 0, 0, 0, 0, 0, 0)
         ON DUPLICATE KEY UPDATE LeagueID = NEW.LeagueID;

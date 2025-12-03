@@ -22,14 +22,14 @@ async function populateTeamStats() {
     for (const tl of teamLeagues) {
       // Check if stats already exist
       const [existing] = await db.query(
-        'SELECT * FROM TEAMSTATS WHERE LeagueID = ? AND TeamID = ?',
+        'SELECT * FROM LEAGUETEAMSTATS WHERE LeagueID = ? AND TeamID = ?',
         [tl.LeagueID, tl.TeamID]
       );
 
       if (existing.length === 0) {
         // Insert initial stats
         await db.query(`
-          INSERT INTO TEAMSTATS 
+          INSERT INTO LEAGUETEAMSTATS 
           (LeagueID, TeamID, Wins, Losses, Draws, Points, GoalsFor, GoalDifference, MatchesPlayed)
           VALUES (?, ?, 0, 0, 0, 0, 0, 0, 0)
         `, [tl.LeagueID, tl.TeamID]);
@@ -43,7 +43,7 @@ async function populateTeamStats() {
     console.log('\n✅ Successfully populated TEAMSTATS table');
 
     // Show summary
-    const [count] = await db.query('SELECT COUNT(*) as count FROM TEAMSTATS');
+    const [count] = await db.query('SELECT COUNT(*) as count FROM LEAGUETEAMSTATS');
     console.log(`\nTotal team stats records: ${count[0].count}`);
 
     process.exit(0);

@@ -2,7 +2,7 @@ const db = require('../config/database');
 
 async function removeGoalsAgainst() {
   try {
-    console.log('Removing GoalsAgainst column from TEAMSTATS table...');
+    console.log('Removing GoalsAgainst column from LEAGUETEAMSTATS table...');
 
     // Drop the GoalsAgainst column
     await db.query(`
@@ -11,7 +11,7 @@ async function removeGoalsAgainst() {
     `);
     console.log('✓ Removed GoalsAgainst column');
 
-    console.log('\n✅ Successfully removed GoalsAgainst from TEAMSTATS table');
+    console.log('\n✅ Successfully removed GoalsAgainst from LEAGUETEAMSTATS table');
 
     process.exit(0);
   } catch (error) {

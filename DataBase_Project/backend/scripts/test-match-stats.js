@@ -52,7 +52,7 @@ async function testMatchStatsUpdate() {
     // Check TEAMSTATS to see if trigger worked
     const [teamStats] = await db.query(`
       SELECT ts.*, t.TeamName
-      FROM TEAMSTATS ts
+      FROM LEAGUETEAMSTATS ts
       JOIN TEAM t ON ts.TeamID = t.TeamID
       WHERE ts.LeagueID = ?
       ORDER BY ts.Points DESC

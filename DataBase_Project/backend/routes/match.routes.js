@@ -76,7 +76,68 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', adminAuth, async (req, res) => {
   try {
-    const { team1Id, team2Id, leagueId, tournamentId, venueId, refereeId, matchDate, matchTime, status } = req.body;
+    const { team1Id, team2Id, leagueId, tournamentId, venueId, refereeId, matchDate, matchTime, status, team1Score, team2Score, winnerTeamId, highlights, team1Possession, team2Possession } = req.body;
+    
+    // If creating a match with Completed status, require scores, venue, and referee
+    if (status === 'Completed') {
+      if (team1Score === undefined || team1Score === null || team2Score === undefined || team2Score === null) {
+        return res.status(400).json({
+          error: {
+            message: 'Cannot create a completed match without scores. Please provide team1Score and team2Score.',
+            status: 400
+          }
+        });
+      }
+      
+      if (!venueId) {
+        return res.status(400).json({
+          error: {
+            message: 'Cannot create a completed match without a venue. Please select a venue.',
+            status: 400
+          }
+        });
+      }
+      
+      if (!refereeId) {
+        return res.status(400).json({
+          error: {
+            message: 'Cannot create a completed match without a referee. Please select a referee.',
+            status: 400
+          }
+        });
+      }
+      
+      // Validate winner matches the scores
+      const score1 = parseInt(team1Score);
+      const score2 = parseInt(team2Score);
+      
+      if (score1 > score2 && winnerTeamId != team1Id) {
+        return res.status(400).json({
+          error: {
+            message: 'Winner team ID must match Team1 since Team1 has the higher score.',
+            status: 400
+          }
+        });
+      }
+      
+      if (score2 > score1 && winnerTeamId != team2Id) {
+        return res.status(400).json({
+          error: {
+            message: 'Winner team ID must match Team2 since Team2 has the higher score.',
+            status: 400
+          }
+        });
+      }
+      
+      if (score1 === score2 && winnerTeamId !== null && winnerTeamId !== undefined && winnerTeamId !== '') {
+        return res.status(400).json({
+          error: {
+            message: 'Winner team ID must be null for a draw (equal scores).',
+            status: 400
+          }
+        });
+      }
+    }
 
     console.log('Received match data:', { team1Id, team2Id, leagueId, tournamentId, venueId, refereeId, matchDate, matchTime, status });
 
@@ -122,34 +183,65 @@ router.post('/', adminAuth, async (req, res) => {
       });
     }
 
-    // Check if both teams have at least 11 players
-    const [team1Players] = await db.query(
-      'SELECT COUNT(*) as playerCount FROM PLAYERTEAM WHERE TeamID = ? AND IsCurrent = TRUE',
-      [team1Id]
-    );
-    const [team2Players] = await db.query(
-      'SELECT COUNT(*) as playerCount FROM PLAYERTEAM WHERE TeamID = ? AND IsCurrent = TRUE',
-      [team2Id]
-    );
-
-    const teamsWithInsufficientPlayers = [];
-    if (team1Players[0].playerCount < 11) {
-      teamsWithInsufficientPlayers.push(`${team1Coach[0]?.TeamName || 'Team 1'} (${team1Players[0].playerCount} players)`);
-    }
-    if (team2Players[0].playerCount < 11) {
-      teamsWithInsufficientPlayers.push(`${team2Coach[0]?.TeamName || 'Team 2'} (${team2Players[0].playerCount} players)`);
-    }
-
-    if (teamsWithInsufficientPlayers.length > 0) {
-      const teamsList = teamsWithInsufficientPlayers.join(' and ');
-      return res.status(400).json({
-        error: {
-          message: `Cannot create match. The following team(s) do not have at least 11 players: ${teamsList}. Please add more players to the team(s) before scheduling a match.`,
-          status: 400
+    // Note: Minimum 11 players constraint is enforced at database level via trigger
+    
+    // Validate status based on match date and time
+    if (matchDate && status) {
+      const currentDate = new Date();
+      const matchDateObj = new Date(matchDate);
+      
+      // Reset time to compare dates only
+      currentDate.setHours(0, 0, 0, 0);
+      matchDateObj.setHours(0, 0, 0, 0);
+      
+      // If match is in the future
+      if (matchDateObj > currentDate) {
+        if (status === 'Completed') {
+          return res.status(400).json({
+            error: {
+              message: 'Cannot mark a future match as Completed. Match date must be today or in the past.',
+              status: 400
+            }
+          });
         }
-      });
+      }
+      // If match is in the past
+      else if (matchDateObj < currentDate) {
+        if (status !== 'Completed' && status !== 'Cancelled') {
+          return res.status(400).json({
+            error: {
+              message: 'Match date is in the past. Status must be Completed or Cancelled.',
+              status: 400
+            }
+          });
+        }
+      }
+      // If match is today, check time
+      else if (matchDateObj.getTime() === currentDate.getTime() && matchTime) {
+        const currentTime = new Date().toTimeString().slice(0, 5); // HH:MM format
+        if (matchTime <= currentTime) {
+          if (status === 'Scheduled') {
+            return res.status(400).json({
+              error: {
+                message: 'Match time has already passed or is current. Status cannot be Scheduled.',
+                status: 400
+              }
+            });
+          }
+        } else {
+          // Match is today but time is in the future
+          if (status === 'Completed') {
+            return res.status(400).json({
+              error: {
+                message: 'Cannot mark a match as Completed before its scheduled time.',
+                status: 400
+              }
+            });
+          }
+        }
+      }
     }
-
+    
     // Check if league has started (if leagueId is provided)
     if (leagueId) {
       const [league] = await db.query(
@@ -262,20 +354,133 @@ router.post('/', adminAuth, async (req, res) => {
       }
     }
 
+    // Ensure either leagueId or tournamentId is provided (not both, not neither)
+    const finalLeagueId = leagueId || null;
+    const finalTournamentId = tournamentId || null;
+    
+    if ((finalLeagueId && finalTournamentId) || (!finalLeagueId && !finalTournamentId)) {
+      return res.status(400).json({
+        error: {
+          message: 'A match must be either a League match OR a Tournament match (not both, not neither). Please select either a league or a tournament.',
+          status: 400
+        }
+      });
+    }
+
     const [result] = await db.query(
-      'INSERT INTO \`MATCH\` (Team1ID, Team2ID, LeagueID, TournamentID, VenueID, RefereeID, MatchDate, MatchTime, Status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [team1Id, team2Id, leagueId || null, tournamentId || null, venueId || null, refereeId || null, matchDate, matchTime, status || 'Scheduled']
+      'INSERT INTO \`MATCH\` (Team1ID, Team2ID, LeagueID, TournamentID, VenueID, RefereeID, MatchDate, MatchTime, Status, Team1Score, Team2Score, WinnerTeamID, Highlights) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        team1Id, 
+        team2Id, 
+        finalLeagueId, 
+        finalTournamentId, 
+        venueId || null, 
+        refereeId || null, 
+        matchDate, 
+        matchTime, 
+        status || 'Scheduled',
+        status === 'Completed' ? (team1Score || 0) : 0,
+        status === 'Completed' ? (team2Score || 0) : 0,
+        status === 'Completed' ? (winnerTeamId || null) : null,
+        status === 'Completed' ? (highlights || null) : null
+      ]
     );
-    res.status(201).json({ message: 'Match created successfully', matchId: result.insertId });
+
+    const matchId = result.insertId;
+
+    // If match is completed and has scores, insert MATCHSTATS
+    if (status === 'Completed' && team1Score !== undefined && team1Score !== null && team2Score !== undefined && team2Score !== null) {
+      // Insert Team1 match stats
+      await db.query(
+        `INSERT INTO MATCHSTATS (MatchID, TeamID, Score, Possession) 
+         VALUES (?, ?, ?, ?)`,
+        [matchId, team1Id, team1Score, team1Possession || 0]
+      );
+
+      // Insert Team2 match stats
+      await db.query(
+        `INSERT INTO MATCHSTATS (MatchID, TeamID, Score, Possession) 
+         VALUES (?, ?, ?, ?)`,
+        [matchId, team2Id, team2Score, team2Possession || 0]
+      );
+    }
+
+    res.status(201).json({ message: 'Match created successfully', matchId: matchId });
   } catch (error) {
     console.error('Error creating match:', error);
+    
+    // Check if error is from database trigger or constraint
+    if (error.sqlMessage) {
+      return res.status(400).json({ 
+        error: { 
+          message: error.sqlMessage,
+          status: 400 
+        } 
+      });
+    }
+    
     res.status(500).json({ error: { message: 'Failed to create match', status: 500 } });
   }
 });
 
 router.put('/:id', adminAuth, async (req, res) => {
   try {
-    const { leagueId, tournamentId, matchDate, matchTime, team1Score, team2Score, status, winnerTeamId, highlights, team1Possession, team2Possession } = req.body;
+    const { leagueId, tournamentId, matchDate, matchTime, team1Score, team2Score, status, winnerTeamId, highlights, team1Possession, team2Possession, venueId, refereeId } = req.body;
+
+    // Validate status based on match date and time
+    if (matchDate && status) {
+      const currentDate = new Date();
+      const matchDateObj = new Date(matchDate);
+      
+      // Reset time to compare dates only
+      currentDate.setHours(0, 0, 0, 0);
+      matchDateObj.setHours(0, 0, 0, 0);
+      
+      // If match is in the future
+      if (matchDateObj > currentDate) {
+        if (status === 'Completed') {
+          return res.status(400).json({
+            error: {
+              message: 'Cannot mark a future match as Completed. Match date must be today or in the past.',
+              status: 400
+            }
+          });
+        }
+      }
+      // If match is today and time is provided, check if it's in the future
+      else if (matchDateObj.getTime() === currentDate.getTime() && matchTime) {
+        const currentTime = new Date().toTimeString().slice(0, 5); // HH:MM format
+        if (matchTime > currentTime && status === 'Completed') {
+          return res.status(400).json({
+            error: {
+              message: 'Cannot mark a match as Completed before its scheduled time.',
+              status: 400
+            }
+          });
+        }
+      }
+    }
+
+    // If updating to Completed status, require venue and referee
+    if (status === 'Completed') {
+      if (!venueId) {
+        return res.status(400).json({
+          error: {
+            message: 'Cannot update match to completed status without a venue. Please select a venue.',
+            status: 400
+          }
+        });
+      }
+      
+      if (!refereeId) {
+        return res.status(400).json({
+          error: {
+            message: 'Cannot update match to completed status without a referee. Please select a referee.',
+            status: 400
+          }
+        });
+      }
+    }
 
     // Validate that match has either leagueId OR tournamentId if both are provided (not both)
     if (leagueId !== undefined && tournamentId !== undefined) {
@@ -335,7 +540,7 @@ router.put('/:id', adminAuth, async (req, res) => {
 
     // Update match (use !== undefined to allow 0 as valid score)
     await db.query(
-      'UPDATE \`MATCH\` SET MatchDate = ?, MatchTime = ?, Team1Score = ?, Team2Score = ?, Status = ?, WinnerTeamID = ?, Highlights = ? WHERE MatchID = ?',
+      'UPDATE \`MATCH\` SET MatchDate = ?, MatchTime = ?, Team1Score = ?, Team2Score = ?, Status = ?, WinnerTeamID = ?, Highlights = ?, VenueID = ?, RefereeID = ? WHERE MatchID = ?',
       [
         matchDate,
         matchTime,
@@ -344,6 +549,8 @@ router.put('/:id', adminAuth, async (req, res) => {
         status || 'Scheduled',
         winnerTeamId || null,
         highlights || null,
+        venueId !== undefined ? venueId : null,
+        refereeId !== undefined ? refereeId : null,
         req.params.id
       ]
     );

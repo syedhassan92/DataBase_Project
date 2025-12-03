@@ -58,12 +58,13 @@ router.get('/top-players', auth, async (req, res) => {
       JOIN PLAYER p ON ps.PlayerID = p.PlayerID
       LEFT JOIN PLAYERTEAM pt ON p.PlayerID = pt.PlayerID AND pt.IsCurrent = 1
       LEFT JOIN TEAM t ON pt.TeamID = t.TeamID
-      LEFT JOIN LEAGUE l ON ps.LeagueID = l.LeagueID`;
+      LEFT JOIN LEAGUE l ON ps.LeagueID = l.LeagueID
+      WHERE ps.LeagueID IS NOT NULL`;
     
     const params = [];
     
     if (leagueId) {
-      query += ' WHERE ps.LeagueID = ?';
+      query += ' AND ps.LeagueID = ?';
       params.push(leagueId);
     }
     
@@ -74,6 +75,47 @@ router.get('/top-players', auth, async (req, res) => {
     res.json(players);
   } catch (error) {
     res.status(500).json({ error: { message: 'Failed to fetch top players', status: 500 } });
+  }
+});
+
+// Top players by tournament
+router.get('/tournament-top-players', auth, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+    const sortBy = req.query.sortBy || 'goals';
+    const tournamentId = req.query.tournamentId;
+    const orderByClause = sortBy === 'assists' ? 'ps.Assists DESC' : 'ps.Goals DESC';
+    
+    let query = `
+      SELECT 
+        ps.StatsID as id,
+        p.PlayerName as name, 
+        p.PlayerRole as position,
+        t.TeamName,
+        COALESCE(tn.TournamentName, 'N/A') as TournamentName,
+        ps.Rating, 
+        ps.Goals as goals, 
+        ps.Assists as assists
+      FROM PLAYERSTATS ps
+      JOIN PLAYER p ON ps.PlayerID = p.PlayerID
+      LEFT JOIN PLAYERTEAM pt ON p.PlayerID = pt.PlayerID AND pt.IsCurrent = 1
+      LEFT JOIN TEAM t ON pt.TeamID = t.TeamID
+      LEFT JOIN TOURNAMENT tn ON ps.TournamentID = tn.TournamentID`;
+    
+    const params = [];
+    
+    if (tournamentId) {
+      query += ' WHERE ps.TournamentID = ?';
+      params.push(tournamentId);
+    }
+    
+    query += ` ORDER BY ${orderByClause} LIMIT ?`;
+    params.push(limit);
+    
+    const [players] = await db.query(query, params);
+    res.json(players);
+  } catch (error) {
+    res.status(500).json({ error: { message: 'Failed to fetch tournament top players', status: 500 } });
   }
 });
 
@@ -91,7 +133,7 @@ router.get('/standings/:leagueId', auth, async (req, res) => {
         ts.GoalsFor,
         ts.GoalDifference,
         ts.Points
-      FROM TEAMSTATS ts
+      FROM LEAGUETEAMSTATS ts
       JOIN TEAM t ON ts.TeamID = t.TeamID
       WHERE ts.LeagueID = ?
       ORDER BY ts.Points DESC, ts.GoalDifference DESC, ts.GoalsFor DESC
@@ -99,6 +141,31 @@ router.get('/standings/:leagueId', auth, async (req, res) => {
     res.json(standings);
   } catch (error) {
     res.status(500).json({ error: { message: 'Failed to fetch standings', status: 500 } });
+  }
+});
+
+// Tournament standings
+router.get('/tournament-standings/:tournamentId', auth, async (req, res) => {
+  try {
+    const [standings] = await db.query(`
+      SELECT 
+        t.TeamID,
+        t.TeamName, 
+        tts.MatchesPlayed,
+        tts.Wins, 
+        tts.Draws,
+        tts.Losses, 
+        tts.GoalsFor,
+        tts.GoalDifference,
+        tts.Points
+      FROM TOURNAMENTTEAMSTATS tts
+      JOIN TEAM t ON tts.TeamID = t.TeamID
+      WHERE tts.TournamentID = ?
+      ORDER BY tts.Points DESC, tts.GoalDifference DESC, tts.GoalsFor DESC
+    `, [req.params.tournamentId]);
+    res.json(standings);
+  } catch (error) {
+    res.status(500).json({ error: { message: 'Failed to fetch tournament standings', status: 500 } });
   }
 });
 
@@ -133,9 +200,9 @@ router.post('/players', adminAuth, async (req, res) => {
       return res.status(400).json({ error: { message: 'Match ID and player stats are required', status: 400 } });
     }
 
-    // Get match details to determine if it's a win and league
+    // Get match details to determine if it's a win and league/tournament
     const [matches] = await db.query(`
-      SELECT Team1ID, Team2ID, Team1Score, Team2Score, WinnerTeamID, LeagueID 
+      SELECT Team1ID, Team2ID, Team1Score, Team2Score, WinnerTeamID, LeagueID, TournamentID 
       FROM \`MATCH\` 
       WHERE MatchID = ?
     `, [matchId]);
@@ -145,6 +212,11 @@ router.post('/players', adminAuth, async (req, res) => {
     }
 
     const match = matches[0];
+
+    // Validate that match has either league or tournament
+    if (!match.LeagueID && !match.TournamentID) {
+      return res.status(400).json({ error: { message: 'Match must belong to either a league or tournament', status: 400 } });
+    }
 
     // First pass: Get all player teams
     const playerTeamMap = {};
@@ -190,6 +262,35 @@ router.post('/players', adminAuth, async (req, res) => {
       });
     }
 
+    // Validate assists don't exceed goals scored by team
+    const team1Assists = playerStats
+      .filter(stat => playerTeamMap[stat.playerId] === match.Team1ID)
+      .reduce((sum, stat) => sum + (parseInt(stat.assists) || 0), 0);
+    
+    const team2Assists = playerStats
+      .filter(stat => playerTeamMap[stat.playerId] === match.Team2ID)
+      .reduce((sum, stat) => sum + (parseInt(stat.assists) || 0), 0);
+
+    if (team1Assists > match.Team1Score) {
+      const [team1] = await db.query('SELECT TeamName FROM TEAM WHERE TeamID = ?', [match.Team1ID]);
+      return res.status(400).json({ 
+        error: { 
+          message: `Total assists for ${team1[0]?.TeamName || 'Team 1'} (${team1Assists}) exceeds their team score (${match.Team1Score}). Assists cannot exceed goals scored.`,
+          status: 400 
+        } 
+      });
+    }
+
+    if (team2Assists > match.Team2Score) {
+      const [team2] = await db.query('SELECT TeamName FROM TEAM WHERE TeamID = ?', [match.Team2ID]);
+      return res.status(400).json({ 
+        error: { 
+          message: `Total assists for ${team2[0]?.TeamName || 'Team 2'} (${team2Assists}) exceeds their team score (${match.Team2Score}). Assists cannot exceed goals scored.`,
+          status: 400 
+        } 
+      });
+    }
+
     // Update stats for each player
     for (const stat of playerStats) {
       const { playerId, goals, assists } = stat;
@@ -199,12 +300,21 @@ router.post('/players', adminAuth, async (req, res) => {
       
       const isWin = match.WinnerTeamID === playerTeamId ? 1 : 0;
 
-      // Check if player stats record exists for this specific match and league
-      const [existingStats] = await db.query(`
-        SELECT StatsID 
-        FROM PLAYERSTATS 
-        WHERE PlayerID = ? AND MatchID = ? AND LeagueID = ?
-      `, [playerId, matchId, match.LeagueID]);
+      // Check if player stats record exists for this specific match
+      let existingStats;
+      if (match.LeagueID) {
+        [existingStats] = await db.query(`
+          SELECT StatsID 
+          FROM PLAYERSTATS 
+          WHERE PlayerID = ? AND MatchID = ? AND LeagueID = ?
+        `, [playerId, matchId, match.LeagueID]);
+      } else {
+        [existingStats] = await db.query(`
+          SELECT StatsID 
+          FROM PLAYERSTATS 
+          WHERE PlayerID = ? AND MatchID = ? AND TournamentID = ?
+        `, [playerId, matchId, match.TournamentID]);
+      }
 
       if (existingStats.length > 0) {
         // Update existing stats for this match
@@ -217,10 +327,17 @@ router.post('/players', adminAuth, async (req, res) => {
         `, [parseInt(goals) || 0, parseInt(assists) || 0, existingStats[0].StatsID]);
       } else {
         // Create new stats record for this match
-        await db.query(`
-          INSERT INTO PLAYERSTATS (PlayerID, MatchID, LeagueID, MatchesPlayed, Wins, Goals, Assists, Rating)
-          VALUES (?, ?, ?, 1, ?, ?, ?, 0.00)
-        `, [playerId, matchId, match.LeagueID, isWin, parseInt(goals) || 0, parseInt(assists) || 0]);
+        if (match.LeagueID) {
+          await db.query(`
+            INSERT INTO PLAYERSTATS (PlayerID, MatchID, LeagueID, TournamentID, MatchesPlayed, Wins, Goals, Assists, Rating)
+            VALUES (?, ?, ?, NULL, 1, ?, ?, ?, 0.00)
+          `, [playerId, matchId, match.LeagueID, isWin, parseInt(goals) || 0, parseInt(assists) || 0]);
+        } else {
+          await db.query(`
+            INSERT INTO PLAYERSTATS (PlayerID, MatchID, LeagueID, TournamentID, MatchesPlayed, Wins, Goals, Assists, Rating)
+            VALUES (?, ?, NULL, ?, 1, ?, ?, ?, 0.00)
+          `, [playerId, matchId, match.TournamentID, isWin, parseInt(goals) || 0, parseInt(assists) || 0]);
+        }
       }
     }
 

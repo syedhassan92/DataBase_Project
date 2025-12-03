@@ -102,8 +102,8 @@ CREATE TABLE TEAMLEAGUE (
 )
 ENGINE=InnoDB;
 
--- TEAMSTATS Table (BCNF: Natural key (LeagueID, TeamID) as primary key)
-CREATE TABLE TEAMSTATS (
+-- LEAGUETEAMSTATS Table (BCNF: Natural key (LeagueID, TeamID) as primary key)
+CREATE TABLE LEAGUETEAMSTATS (
     LeagueID INT NOT NULL,
     TeamID INT NOT NULL,
     Wins INT DEFAULT 0,
@@ -120,14 +120,14 @@ CREATE TABLE TEAMSTATS (
 )
 ENGINE=InnoDB;
 
--- Trigger to automatically populate TEAMSTATS when team is added to league
+-- Trigger to automatically populate LEAGUETEAMSTATS when team is added to league
 DELIMITER //
 DROP TRIGGER IF EXISTS after_teamleague_insert//
 CREATE TRIGGER after_teamleague_insert
 AFTER INSERT ON TEAMLEAGUE
 FOR EACH ROW
 BEGIN
-    INSERT INTO TEAMSTATS 
+    INSERT INTO LEAGUETEAMSTATS 
     (LeagueID, TeamID, Wins, Losses, Draws, Points, GoalsFor, GoalDifference, MatchesPlayed)
     VALUES (NEW.LeagueID, NEW.TeamID, 0, 0, 0, 0, 0, 0, 0)
     ON DUPLICATE KEY UPDATE LeagueID = NEW.LeagueID;
@@ -144,6 +144,38 @@ CREATE TABLE TOURNAMENTTEAM (
     FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE
 )
 ENGINE=InnoDB;
+
+-- TOURNAMENTTEAMSTATS Table (BCNF: Natural key (TournamentID, TeamID) as primary key)
+CREATE TABLE TOURNAMENTTEAMSTATS (
+    TournamentID INT NOT NULL,
+    TeamID INT NOT NULL,
+    Wins INT DEFAULT 0,
+    Losses INT DEFAULT 0,
+    Draws INT DEFAULT 0,
+    Points INT DEFAULT 0,
+    GoalsFor INT DEFAULT 0,
+    GoalDifference INT DEFAULT 0,
+    MatchesPlayed INT DEFAULT 0,
+    CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (TournamentID, TeamID),
+    FOREIGN KEY (TournamentID) REFERENCES TOURNAMENT(TournamentID) ON DELETE CASCADE,
+    FOREIGN KEY (TeamID) REFERENCES TEAM(TeamID) ON DELETE CASCADE
+)
+ENGINE=InnoDB;
+
+-- Trigger to automatically populate TOURNAMENTTEAMSTATS when team is added to tournament
+DELIMITER //
+DROP TRIGGER IF EXISTS after_tournamentteam_insert//
+CREATE TRIGGER after_tournamentteam_insert
+AFTER INSERT ON TOURNAMENTTEAM
+FOR EACH ROW
+BEGIN
+    INSERT INTO TOURNAMENTTEAMSTATS 
+    (TournamentID, TeamID, Wins, Losses, Draws, Points, GoalsFor, GoalDifference, MatchesPlayed)
+    VALUES (NEW.TournamentID, NEW.TeamID, 0, 0, 0, 0, 0, 0, 0)
+    ON DUPLICATE KEY UPDATE TournamentID = NEW.TournamentID;
+END//
+DELIMITER ;
 
 -- PLAYER Table (BCNF: PlayerID determines all attributes)
 CREATE TABLE PLAYER (
@@ -182,10 +214,11 @@ CREATE TABLE VENUE (
 ENGINE=InnoDB;
 
 -- MATCH Table (BCNF: MatchID determines all attributes)
+-- Note: Either LeagueID OR TournamentID must be filled (not both, not neither)
 CREATE TABLE `MATCH` (
     MatchID INT AUTO_INCREMENT PRIMARY KEY,
-    LeagueID INT,
-    TournamentID INT,
+    LeagueID INT DEFAULT NULL,
+    TournamentID INT DEFAULT NULL,
     Team1ID INT NOT NULL,
     Team2ID INT NOT NULL,
     VenueID INT,
@@ -206,7 +239,14 @@ CREATE TABLE `MATCH` (
     FOREIGN KEY (RefereeID) REFERENCES REFEREE(RefereeID) ON DELETE SET NULL,
     FOREIGN KEY (WinnerTeamID) REFERENCES TEAM(TeamID) ON DELETE SET NULL,
     CHECK (Team1ID != Team2ID),
-    CHECK ((LeagueID IS NOT NULL AND TournamentID IS NULL) OR (LeagueID IS NULL AND TournamentID IS NOT NULL))
+    CHECK (WinnerTeamID IS NULL OR WinnerTeamID = Team1ID OR WinnerTeamID = Team2ID),
+    CHECK ((LeagueID IS NOT NULL AND TournamentID IS NULL) OR (LeagueID IS NULL AND TournamentID IS NOT NULL)),
+    CHECK (
+        (Status = 'Completed' AND WinnerTeamID IS NULL AND Team1Score = Team2Score) OR
+        (Status = 'Completed' AND WinnerTeamID = Team1ID AND Team1Score > Team2Score) OR
+        (Status = 'Completed' AND WinnerTeamID = Team2ID AND Team2Score > Team1Score) OR
+        (Status IN ('Scheduled', 'Live', 'Cancelled'))
+    )
 )
 ENGINE=InnoDB;
 
@@ -225,11 +265,13 @@ CREATE TABLE MATCHSTATS (
 ENGINE=InnoDB;
 
 -- PLAYERSTATS Table (BCNF: StatsID determines all attributes)
+-- Note: Either LeagueID OR TournamentID must be filled (not both, not neither)
 CREATE TABLE PLAYERSTATS (
     StatsID INT AUTO_INCREMENT PRIMARY KEY,
     PlayerID INT NOT NULL,
     MatchID INT NOT NULL,
-    LeagueID INT NOT NULL,
+    LeagueID INT DEFAULT NULL,
+    TournamentID INT DEFAULT NULL,
     MatchesPlayed INT DEFAULT 0,
     Wins INT DEFAULT 0,
     Goals INT DEFAULT 0,
@@ -238,7 +280,9 @@ CREATE TABLE PLAYERSTATS (
     CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (PlayerID) REFERENCES PLAYER(PlayerID) ON DELETE CASCADE,
     FOREIGN KEY (MatchID) REFERENCES `MATCH`(MatchID) ON DELETE CASCADE,
-    FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE
+    FOREIGN KEY (LeagueID) REFERENCES LEAGUE(LeagueID) ON DELETE CASCADE,
+    FOREIGN KEY (TournamentID) REFERENCES TOURNAMENT(TournamentID) ON DELETE CASCADE,
+    CHECK ((LeagueID IS NOT NULL AND TournamentID IS NULL) OR (LeagueID IS NULL AND TournamentID IS NOT NULL))
 )
 ENGINE=InnoDB;
 
@@ -260,35 +304,209 @@ CREATE TABLE TRANSFER (
 )
 ENGINE=InnoDB;
 
--- Trigger to automatically update TEAMSTATS when a match is completed
+-- Trigger to automatically update LEAGUETEAMSTATS/TOURNAMENTTEAMSTATS when a match is inserted as completed
 DELIMITER //
+DROP TRIGGER IF EXISTS after_match_insert//
+CREATE TRIGGER after_match_insert
+AFTER INSERT ON `MATCH`
+FOR EACH ROW
+BEGIN
+    DECLARE team1_points INT;
+    DECLARE team2_points INT;
+    DECLARE team1_wins INT;
+    DECLARE team1_draws INT;
+    DECLARE team1_losses INT;
+    DECLARE team2_wins INT;
+    DECLARE team2_draws INT;
+    DECLARE team2_losses INT;
+    
+    -- Only proceed if match is inserted with completed status
+    IF NEW.Status = 'Completed' THEN
+        
+        -- Calculate results once
+        IF NEW.Team1Score > NEW.Team2Score THEN
+            SET team1_wins = 1, team1_draws = 0, team1_losses = 0, team1_points = 3;
+            SET team2_wins = 0, team2_draws = 0, team2_losses = 1, team2_points = 0;
+        ELSEIF NEW.Team1Score = NEW.Team2Score THEN
+            SET team1_wins = 0, team1_draws = 1, team1_losses = 0, team1_points = 1;
+            SET team2_wins = 0, team2_draws = 1, team2_losses = 0, team2_points = 1;
+        ELSE
+            SET team1_wins = 0, team1_draws = 0, team1_losses = 1, team1_points = 0;
+            SET team2_wins = 1, team2_draws = 0, team2_losses = 0, team2_points = 3;
+        END IF;
+        
+        -- Update league stats if match is part of a league
+        IF NEW.LeagueID IS NOT NULL THEN
+            -- Update Team1 league stats
+            UPDATE LEAGUETEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team1Score,
+                GoalDifference = GoalDifference + (NEW.Team1Score - NEW.Team2Score),
+                Wins = Wins + team1_wins,
+                Draws = Draws + team1_draws,
+                Losses = Losses + team1_losses,
+                Points = Points + team1_points
+            WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team1ID;
+            
+            -- Update Team2 league stats
+            UPDATE LEAGUETEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team2Score,
+                GoalDifference = GoalDifference + (NEW.Team2Score - NEW.Team1Score),
+                Wins = Wins + team2_wins,
+                Draws = Draws + team2_draws,
+                Losses = Losses + team2_losses,
+                Points = Points + team2_points
+            WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team2ID;
+        END IF;
+        
+        -- Update tournament stats if match is part of a tournament
+        IF NEW.TournamentID IS NOT NULL THEN
+            -- Update Team1 tournament stats
+            UPDATE TOURNAMENTTEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team1Score,
+                GoalDifference = GoalDifference + (NEW.Team1Score - NEW.Team2Score),
+                Wins = Wins + team1_wins,
+                Draws = Draws + team1_draws,
+                Losses = Losses + team1_losses,
+                Points = Points + team1_points
+            WHERE TournamentID = NEW.TournamentID AND TeamID = NEW.Team1ID;
+            
+            -- Update Team2 tournament stats
+            UPDATE TOURNAMENTTEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team2Score,
+                GoalDifference = GoalDifference + (NEW.Team2Score - NEW.Team1Score),
+                Wins = Wins + team2_wins,
+                Draws = Draws + team2_draws,
+                Losses = Losses + team2_losses,
+                Points = Points + team2_points
+            WHERE TournamentID = NEW.TournamentID AND TeamID = NEW.Team2ID;
+        END IF;
+    END IF;
+END//
+DELIMITER ;
+
+-- Trigger to automatically update LEAGUETEAMSTATS when a match is updated to completed
+DELIMITER //
+DROP TRIGGER IF EXISTS before_match_update//
+CREATE TRIGGER before_match_update
+BEFORE UPDATE ON `MATCH`
+FOR EACH ROW
+BEGIN
+  -- Validate that completed matches cannot be in the future
+  IF NEW.Status = 'Completed' THEN
+    -- Check if match date is in the future
+    IF NEW.MatchDate > CURDATE() THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot mark a future match as Completed. Match date must be today or in the past.';
+    END IF;
+    
+    -- Check if match is today but time is in the future
+    IF NEW.MatchDate = CURDATE() AND NEW.MatchTime > CURTIME() THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot mark a match as Completed before its scheduled time.';
+    END IF;
+    
+    -- Validate VenueID and RefereeID for Completed matches
+    IF NEW.VenueID IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot update match to completed: VenueID cannot be null for completed matches.';
+    END IF;
+    IF NEW.RefereeID IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot update match to completed: RefereeID cannot be null for completed matches.';
+    END IF;
+  END IF;
+END//
+
 DROP TRIGGER IF EXISTS after_match_update//
 CREATE TRIGGER after_match_update
 AFTER UPDATE ON `MATCH`
 FOR EACH ROW
 BEGIN
-    IF NEW.Status = 'Completed' AND OLD.Status != 'Completed' AND NEW.LeagueID IS NOT NULL THEN
-        UPDATE TEAMSTATS
-        SET 
-            MatchesPlayed = MatchesPlayed + 1,
-            GoalsFor = GoalsFor + NEW.Team1Score,
-            GoalDifference = GoalDifference + (NEW.Team1Score - NEW.Team2Score),
-            Wins = Wins + CASE WHEN NEW.Team1Score > NEW.Team2Score THEN 1 ELSE 0 END,
-            Draws = Draws + CASE WHEN NEW.Team1Score = NEW.Team2Score THEN 1 ELSE 0 END,
-            Losses = Losses + CASE WHEN NEW.Team1Score < NEW.Team2Score THEN 1 ELSE 0 END,
-            Points = Points + CASE WHEN NEW.Team1Score > NEW.Team2Score THEN 3 WHEN NEW.Team1Score = NEW.Team2Score THEN 1 ELSE 0 END
-        WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team1ID;
+    DECLARE team1_points INT;
+    DECLARE team2_points INT;
+    DECLARE team1_wins INT;
+    DECLARE team1_draws INT;
+    DECLARE team1_losses INT;
+    DECLARE team2_wins INT;
+    DECLARE team2_draws INT;
+    DECLARE team2_losses INT;
+    
+    -- Only proceed if match just completed
+    IF NEW.Status = 'Completed' AND OLD.Status != 'Completed' THEN
         
-        UPDATE TEAMSTATS
-        SET 
-            MatchesPlayed = MatchesPlayed + 1,
-            GoalsFor = GoalsFor + NEW.Team2Score,
-            GoalDifference = GoalDifference + (NEW.Team2Score - NEW.Team1Score),
-            Wins = Wins + CASE WHEN NEW.Team2Score > NEW.Team1Score THEN 1 ELSE 0 END,
-            Draws = Draws + CASE WHEN NEW.Team2Score = NEW.Team1Score THEN 1 ELSE 0 END,
-            Losses = Losses + CASE WHEN NEW.Team2Score < NEW.Team1Score THEN 1 ELSE 0 END,
-            Points = Points + CASE WHEN NEW.Team2Score > NEW.Team1Score THEN 3 WHEN NEW.Team2Score = NEW.Team1Score THEN 1 ELSE 0 END
-        WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team2ID;
+        -- Calculate results once
+        IF NEW.Team1Score > NEW.Team2Score THEN
+            SET team1_wins = 1, team1_draws = 0, team1_losses = 0, team1_points = 3;
+            SET team2_wins = 0, team2_draws = 0, team2_losses = 1, team2_points = 0;
+        ELSEIF NEW.Team1Score = NEW.Team2Score THEN
+            SET team1_wins = 0, team1_draws = 1, team1_losses = 0, team1_points = 1;
+            SET team2_wins = 0, team2_draws = 1, team2_losses = 0, team2_points = 1;
+        ELSE
+            SET team1_wins = 0, team1_draws = 0, team1_losses = 1, team1_points = 0;
+            SET team2_wins = 1, team2_draws = 0, team2_losses = 0, team2_points = 3;
+        END IF;
+        
+        -- Update league stats if match is part of a league
+        IF NEW.LeagueID IS NOT NULL THEN
+            -- Update Team1 league stats
+            UPDATE LEAGUETEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team1Score,
+                GoalDifference = GoalDifference + (NEW.Team1Score - NEW.Team2Score),
+                Wins = Wins + team1_wins,
+                Draws = Draws + team1_draws,
+                Losses = Losses + team1_losses,
+                Points = Points + team1_points
+            WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team1ID;
+            
+            -- Update Team2 league stats
+            UPDATE LEAGUETEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team2Score,
+                GoalDifference = GoalDifference + (NEW.Team2Score - NEW.Team1Score),
+                Wins = Wins + team2_wins,
+                Draws = Draws + team2_draws,
+                Losses = Losses + team2_losses,
+                Points = Points + team2_points
+            WHERE LeagueID = NEW.LeagueID AND TeamID = NEW.Team2ID;
+        END IF;
+        
+        -- Update tournament stats if match is part of a tournament
+        IF NEW.TournamentID IS NOT NULL THEN
+            -- Update Team1 tournament stats
+            UPDATE TOURNAMENTTEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team1Score,
+                GoalDifference = GoalDifference + (NEW.Team1Score - NEW.Team2Score),
+                Wins = Wins + team1_wins,
+                Draws = Draws + team1_draws,
+                Losses = Losses + team1_losses,
+                Points = Points + team1_points
+            WHERE TournamentID = NEW.TournamentID AND TeamID = NEW.Team1ID;
+            
+            -- Update Team2 tournament stats
+            UPDATE TOURNAMENTTEAMSTATS
+            SET 
+                MatchesPlayed = MatchesPlayed + 1,
+                GoalsFor = GoalsFor + NEW.Team2Score,
+                GoalDifference = GoalDifference + (NEW.Team2Score - NEW.Team1Score),
+                Wins = Wins + team2_wins,
+                Draws = Draws + team2_draws,
+                Losses = Losses + team2_losses,
+                Points = Points + team2_points
+            WHERE TournamentID = NEW.TournamentID AND TeamID = NEW.Team2ID;
+        END IF;
     END IF;
 END//
 DELIMITER ;
@@ -341,6 +559,94 @@ BEGIN
   IF (SELECT COUNT(*) FROM ADMIN) >= 1 THEN
     SIGNAL SQLSTATE '45000'
     SET MESSAGE_TEXT = 'Only one admin account is allowed in the system';
+  END IF;
+END//
+DELIMITER ;
+
+-- Trigger to enforce minimum 11 players per team when creating a match
+DELIMITER //
+DROP TRIGGER IF EXISTS before_match_insert//
+CREATE TRIGGER before_match_insert
+BEFORE INSERT ON `MATCH`
+FOR EACH ROW
+BEGIN
+  DECLARE team1_player_count INT;
+  DECLARE team2_player_count INT;
+  DECLARE team1_name VARCHAR(100);
+  DECLARE team2_name VARCHAR(100);
+  DECLARE error_msg VARCHAR(500);
+  DECLARE current_datetime DATETIME;
+  DECLARE match_datetime DATETIME;
+  
+  -- Count current players for Team1
+  SELECT COUNT(*) INTO team1_player_count
+  FROM PLAYERTEAM
+  WHERE TeamID = NEW.Team1ID AND IsCurrent = TRUE;
+  
+  -- Count current players for Team2
+  SELECT COUNT(*) INTO team2_player_count
+  FROM PLAYERTEAM
+  WHERE TeamID = NEW.Team2ID AND IsCurrent = TRUE;
+  
+  -- Get team names
+  SELECT TeamName INTO team1_name FROM TEAM WHERE TeamID = NEW.Team1ID;
+  SELECT TeamName INTO team2_name FROM TEAM WHERE TeamID = NEW.Team2ID;
+  
+  -- Check both teams and create appropriate error message
+  IF team1_player_count < 11 AND team2_player_count < 11 THEN
+    SET error_msg = CONCAT('Cannot create match: Both teams do not have at least 11 players. ', 
+                           team1_name, ' has ', team1_player_count, ' players and ',
+                           team2_name, ' has ', team2_player_count, ' players. Each team needs at least 11 players.');
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = error_msg;
+  ELSEIF team1_player_count < 11 THEN
+    SET error_msg = CONCAT('Cannot create match: ', team1_name, ' does not have at least 11 players (currently has ', 
+                           team1_player_count, ' players). Team needs at least 11 players.');
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = error_msg;
+  ELSEIF team2_player_count < 11 THEN
+    SET error_msg = CONCAT('Cannot create match: ', team2_name, ' does not have at least 11 players (currently has ', 
+                           team2_player_count, ' players). Team needs at least 11 players.');
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = error_msg;
+  END IF;
+  
+  -- Validate status based on match date and time
+  SET current_datetime = NOW();
+  SET match_datetime = CONCAT(NEW.MatchDate, ' ', IFNULL(NEW.MatchTime, '00:00:00'));
+  
+  -- If match is in the future, status cannot be 'Completed'
+  IF NEW.MatchDate > CURDATE() THEN
+    IF NEW.Status = 'Completed' THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot mark a future match as Completed. Match date must be today or in the past.';
+    END IF;
+  -- If match is in the past, status can only be 'Completed' or 'Cancelled'
+  ELSEIF NEW.MatchDate < CURDATE() THEN
+    IF NEW.Status NOT IN ('Completed', 'Cancelled') THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot create match: Match date is in the past. Status must be Completed or Cancelled.';
+    END IF;
+  -- If match is today, check time
+  ELSEIF NEW.MatchDate = CURDATE() THEN
+    -- If time is in the future, status cannot be 'Completed'
+    IF NEW.MatchTime > CURTIME() AND NEW.Status = 'Completed' THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot mark a match as Completed before its scheduled time.';
+    -- If time has passed, status cannot be 'Scheduled'
+    ELSEIF NEW.MatchTime <= CURTIME() AND NEW.Status = 'Scheduled' THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot create match: Match time has already passed or is current. Status cannot be Scheduled.';
+    END IF;
+  END IF;
+  
+  -- Validate VenueID and RefereeID for Completed matches
+  IF NEW.Status = 'Completed' THEN
+    IF NEW.VenueID IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot create completed match: VenueID cannot be null for completed matches.';
+    END IF;
+    IF NEW.RefereeID IS NULL THEN
+      SIGNAL SQLSTATE '45000'
+      SET MESSAGE_TEXT = 'Cannot create completed match: RefereeID cannot be null for completed matches.';
+    END IF;
   END IF;
 END//
 DELIMITER ;
@@ -405,13 +711,9 @@ INSERT INTO TEAMLEAGUE (TeamID, LeagueID, CoachID) VALUES
 (4, 2, 4),  -- Phoenix FC in Championship with Sarah Johnson
 (5, 2, 5);  -- Dragons United in Championship with Ahmed Hassan
 
--- Team Stats are automatically created by the after_teamleague_insert trigger
+-- League Team Stats are automatically created by the after_teamleague_insert trigger
 -- Update team stats with actual values
-UPDATE TEAMSTATS SET Wins = 15, Losses = 5, Draws = 8, Points = 53 WHERE LeagueID = 1 AND TeamID = 1;
-UPDATE TEAMSTATS SET Wins = 14, Losses = 6, Draws = 8, Points = 50 WHERE LeagueID = 1 AND TeamID = 2;
-UPDATE TEAMSTATS SET Wins = 12, Losses = 8, Draws = 8, Points = 44 WHERE LeagueID = 1 AND TeamID = 3;
-UPDATE TEAMSTATS SET Wins = 10, Losses = 5, Draws = 5, Points = 35 WHERE LeagueID = 2 AND TeamID = 4;
-UPDATE TEAMSTATS SET Wins = 8, Losses = 7, Draws = 5, Points = 29 WHERE LeagueID = 2 AND TeamID = 5;
+
 
 -- Associate Teams with Tournaments
 INSERT INTO TOURNAMENTTEAM (TournamentID, TeamID) VALUES
@@ -421,51 +723,132 @@ INSERT INTO TOURNAMENTTEAM (TournamentID, TeamID) VALUES
 (2, 4),  -- Phoenix FC in Winter Championship
 (2, 5);  -- Dragons United in Winter Championship
 
--- Insert Players
+-- Insert Players (55 total - 11 per team)
 INSERT INTO PLAYER (PlayerName, PlayerRole) VALUES
+-- Team 1: Thunder FC (Players 1-11)
 ('Alex Rodriguez', 'Forward'),
 ('James Carter', 'Midfielder'),
 ('Tom Wilson', 'Defender'),
+('Marcus Lee', 'Goalkeeper'),
+('Robert Silva', 'Defender'),
+('Lucas Brown', 'Midfielder'),
+('Noah Garcia', 'Forward'),
+('Ethan Martinez', 'Defender'),
+('Mason Lopez', 'Midfielder'),
+('Logan Anderson', 'Forward'),
+('Oliver Harris', 'Defender'),
+-- Team 2: Lightning United (Players 12-22)
 ('Mike Johnson', 'Forward'),
 ('Chris Brown', 'Goalkeeper'),
+('William Clark', 'Defender'),
+('Benjamin Wright', 'Midfielder'),
+('Jacob Hall', 'Forward'),
+('Samuel Allen', 'Defender'),
+('Daniel Young', 'Midfielder'),
+('Matthew King', 'Forward'),
+('Joseph Scott', 'Defender'),
+('Andrew Green', 'Midfielder'),
+('Ryan Adams', 'Forward'),
+-- Team 3: Storm Athletic (Players 23-33)
 ('David Martinez', 'Midfielder'),
 ('Ryan Taylor', 'Defender'),
+('Alexander Nelson', 'Goalkeeper'),
+('Henry Carter', 'Forward'),
+('Jack Mitchell', 'Defender'),
+('Owen Roberts', 'Midfielder'),
+('Luke Turner', 'Forward'),
+('Isaac Phillips', 'Defender'),
+('Nathan Campbell', 'Midfielder'),
+('Gabriel Parker', 'Forward'),
+('Aaron Evans', 'Defender'),
+-- Team 4: Phoenix FC (Players 34-44)
 ('Kevin White', 'Forward'),
-('Daniel Green', 'Midfielder');
+('Sebastian Collins', 'Goalkeeper'),
+('Dylan Edwards', 'Defender'),
+('Christian Stewart', 'Midfielder'),
+('Julian Morris', 'Forward'),
+('Caleb Rogers', 'Defender'),
+('Isaiah Reed', 'Midfielder'),
+('Thomas Cook', 'Forward'),
+('Charles Morgan', 'Defender'),
+('Zachary Bell', 'Midfielder'),
+('Elijah Murphy', 'Forward'),
+-- Team 5: Dragons United (Players 45-55)
+('Daniel Green', 'Midfielder'),
+('Joshua Bailey', 'Goalkeeper'),
+('Christopher Rivera', 'Defender'),
+('Hunter Cooper', 'Forward'),
+('Cameron Richardson', 'Defender'),
+('Connor Cox', 'Midfielder'),
+('Liam Howard', 'Forward'),
+('Austin Ward', 'Defender'),
+('Jordan Torres', 'Midfielder'),
+('Tyler Peterson', 'Forward'),
+('Brandon Gray', 'Defender');
 
--- Associate Players with Teams (PLAYERTEAM)
+-- Associate Players with Teams (PLAYERTEAM) - 11 players per team
 INSERT INTO PLAYERTEAM (PlayerID, TeamID, ContractDetails, StartDate, IsCurrent) VALUES
+-- Thunder FC (Team 1)
 (1, 1, 'Contract until 2026', '2022-01-01', TRUE),
 (2, 1, 'Contract until 2025', '2021-06-01', TRUE),
 (3, 1, 'Contract until 2027', '2023-01-01', TRUE),
-(4, 2, 'Contract until 2026', '2022-07-01', TRUE),
-(5, 2, 'Contract until 2025', '2020-01-01', TRUE),
-(6, 3, 'Contract until 2026', '2022-03-01', TRUE),
-(7, 3, 'Contract until 2024', '2019-01-01', TRUE),
-(8, 4, 'Contract until 2027', '2023-06-01', TRUE),
-(9, 5, 'Contract until 2025', '2021-01-01', TRUE);
+(4, 1, 'Contract until 2026', '2022-03-01', TRUE),
+(5, 1, 'Contract until 2025', '2021-08-01', TRUE),
+(6, 1, 'Contract until 2027', '2023-02-01', TRUE),
+(7, 1, 'Contract until 2026', '2022-05-01', TRUE),
+(8, 1, 'Contract until 2025', '2021-07-01', TRUE),
+(9, 1, 'Contract until 2027', '2023-03-01', TRUE),
+(10, 1, 'Contract until 2026', '2022-04-01', TRUE),
+(11, 1, 'Contract until 2025', '2021-09-01', TRUE),
+-- Lightning United (Team 2)
+(12, 2, 'Contract until 2026', '2022-07-01', TRUE),
+(13, 2, 'Contract until 2025', '2020-01-01', TRUE),
+(14, 2, 'Contract until 2027', '2023-04-01', TRUE),
+(15, 2, 'Contract until 2026', '2022-08-01', TRUE),
+(16, 2, 'Contract until 2025', '2021-10-01', TRUE),
+(17, 2, 'Contract until 2027', '2023-05-01', TRUE),
+(18, 2, 'Contract until 2026', '2022-09-01', TRUE),
+(19, 2, 'Contract until 2025', '2021-11-01', TRUE),
+(20, 2, 'Contract until 2027', '2023-06-01', TRUE),
+(21, 2, 'Contract until 2026', '2022-10-01', TRUE),
+(22, 2, 'Contract until 2025', '2021-12-01', TRUE),
+-- Storm Athletic (Team 3)
+(23, 3, 'Contract until 2026', '2022-03-01', TRUE),
+(24, 3, 'Contract until 2024', '2019-01-01', TRUE),
+(25, 3, 'Contract until 2027', '2023-07-01', TRUE),
+(26, 3, 'Contract until 2026', '2022-11-01', TRUE),
+(27, 3, 'Contract until 2025', '2021-01-15', TRUE),
+(28, 3, 'Contract until 2027', '2023-08-01', TRUE),
+(29, 3, 'Contract until 2026', '2022-12-01', TRUE),
+(30, 3, 'Contract until 2025', '2021-02-01', TRUE),
+(31, 3, 'Contract until 2027', '2023-09-01', TRUE),
+(32, 3, 'Contract until 2026', '2022-01-15', TRUE),
+(33, 3, 'Contract until 2025', '2021-03-01', TRUE),
+-- Phoenix FC (Team 4)
+(34, 4, 'Contract until 2027', '2023-06-01', TRUE),
+(35, 4, 'Contract until 2026', '2022-02-01', TRUE),
+(36, 4, 'Contract until 2025', '2021-04-01', TRUE),
+(37, 4, 'Contract until 2027', '2023-10-01', TRUE),
+(38, 4, 'Contract until 2026', '2022-06-01', TRUE),
+(39, 4, 'Contract until 2025', '2021-05-01', TRUE),
+(40, 4, 'Contract until 2027', '2023-11-01', TRUE),
+(41, 4, 'Contract until 2026', '2022-07-15', TRUE),
+(42, 4, 'Contract until 2025', '2021-06-15', TRUE),
+(43, 4, 'Contract until 2027', '2023-12-01', TRUE),
+(44, 4, 'Contract until 2026', '2022-08-15', TRUE),
+-- Dragons United (Team 5)
+(45, 5, 'Contract until 2025', '2021-01-01', TRUE),
+(46, 5, 'Contract until 2026', '2022-09-15', TRUE),
+(47, 5, 'Contract until 2027', '2023-01-15', TRUE),
+(48, 5, 'Contract until 2025', '2021-07-15', TRUE),
+(49, 5, 'Contract until 2026', '2022-10-15', TRUE),
+(50, 5, 'Contract until 2027', '2023-02-15', TRUE),
+(51, 5, 'Contract until 2025', '2021-08-15', TRUE),
+(52, 5, 'Contract until 2026', '2022-11-15', TRUE),
+(53, 5, 'Contract until 2027', '2023-03-15', TRUE),
+(54, 5, 'Contract until 2025', '2021-09-15', TRUE),
+(55, 5, 'Contract until 2026', '2022-12-15', TRUE);
 
 -- Insert Matches (with Team1ID and Team2ID)
-INSERT INTO `MATCH` (LeagueID, TournamentID, Team1ID, Team2ID, VenueID, RefereeID, MatchDate, MatchTime, Team1Score, Team2Score, Status, WinnerTeamID, Highlights) VALUES
-(1, NULL, 1, 2, 1, 1, '2024-03-15', '19:00:00', 2, 1, 'Completed', 1, 'Exciting match with late winner'),
-(1, NULL, 2, 3, 2, 2, '2024-03-20', '20:00:00', 1, 1, 'Completed', NULL, 'Draw with penalties on both sides'),
-(NULL, 1, 1, 3, 3, 4, '2024-06-15', '18:00:00', 3, 2, 'Completed', 1, 'High scoring thriller'),
-(2, NULL, 4, 5, 1, 1, '2024-04-10', '19:30:00', 0, 0, 'Scheduled', NULL, NULL),
-(NULL, 2, 4, 5, 2, 4, '2024-11-20', '20:00:00', 0, 0, 'Scheduled', NULL, NULL);
-
--- Insert Player Stats
-INSERT INTO PLAYERSTATS (PlayerID, MatchID, LeagueID, MatchesPlayed, Wins, Goals, Assists, Rating) VALUES
-(1, 1, 1, 28, 18, 22, 8, 8.50),
-(2, 2, 1, 26, 17, 5, 12, 7.80),
-(3, 3, 1, 25, 16, 2, 3, 7.50),
-(4, 4, 2, 27, 15, 19, 6, 8.20),
-(5, 5, 2, 28, 16, 0, 0, 7.90),
-(6, 1, 1, 24, 13, 8, 10, 7.60),
-(7, 2, 1, 22, 12, 1, 2, 7.30),
-(8, 3, 2, 20, 9, 15, 5, 8.00),
-(9, 4, 2, 21, 7, 6, 7, 7.40);
-
--- Insert Transfers (simplified - direct player reference)
-INSERT INTO TRANSFER (PlayerID, FromTeamID, ToTeamID, LeagueID, TransferDate, TransferType) VALUES
-(6, 3, 1, 1, '2024-01-15', 'Permanent'),
-(9, 5, 4, 2, '2024-02-20', 'Loan');
+-- Note: Either LeagueID OR TournamentID must be provided (not both, not neither)
+-- Insert matches as Scheduled first, then update to Completed to trigger LEAGUETEAMSTATS/TOURNAMENTTEAMSTATS updates

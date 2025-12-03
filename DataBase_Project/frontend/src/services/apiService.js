@@ -129,6 +129,8 @@ const apiService = {
     getTopScorers: (params = {}) => api.get('/stats/top-players', { params }),
     getTopAssists: (params = {}) => api.get('/stats/top-players', { params: { ...params, sortBy: 'assists' } }),
     getBestRatings: (params = {}) => api.get('/stats/top-players', { params }),
+    getTournamentTopPlayers: (params = {}) => api.get('/stats/tournament-top-players', { params }),
+    getTournamentStandings: (tournamentId) => api.get(`/stats/tournament-standings/${tournamentId}`),
     getTeamComparison: (teamIds) => api.get('/stats/team-comparison', { teamIds }),
     getPlayerComparison: (playerIds) => api.get('/stats/player-comparison', { playerIds }),
   },

@@ -177,7 +177,7 @@ Authorization: Bearer <token>
 
 ## Database Schema
 
-The system includes 15 tables:
+The system includes 17 tables:
 1. USERACCOUNT - User authentication
 2. ADMIN - Administrator details
 3. COACH - Coach information
@@ -185,14 +185,17 @@ The system includes 15 tables:
 5. LEAGUE - League management
 6. TOURNAMENT - Tournament organization
 7. TEAM - Team details
-8. TEAMSTATS - Team statistics per league
-9. TOURNAMENTTEAM - Tournament-team junction
-10. PLAYER - Player information
-11. PLAYERSTATS - Player statistics
-12. VENUE - Venue details
-13. MATCH - Match scheduling and results
-14. TRANSFER - Transfer records
-15. TRANSFERDETAILS - Transfer-player junction
+8. TEAMLEAGUE - Team-league-coach junction
+9. LEAGUETEAMSTATS - Team statistics per league
+10. TOURNAMENTTEAM - Tournament-team junction
+11. TOURNAMENTTEAMSTATS - Team statistics per tournament
+12. PLAYER - Player information
+13. PLAYERTEAM - Player-team contract junction
+14. PLAYERSTATS - Player statistics
+15. VENUE - Venue details
+16. MATCH - Match scheduling and results
+17. MATCHSTATS - Match statistics
+18. TRANSFER - Transfer records
 
 ## Error Handling
 
