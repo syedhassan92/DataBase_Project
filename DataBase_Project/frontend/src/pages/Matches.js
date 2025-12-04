@@ -325,14 +325,34 @@ const Matches = () => {
           const matchTime = match.MatchTime || match.time;
           const formattedDate = matchDate ? new Date(matchDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 'TBD';
           const formattedTime = matchTime ? matchTime.substring(0, 5) : 'TBD';
+          const leagueName = match.LeagueName || match.leagueName || '';
+          const tournamentName = match.TournamentName || match.tournamentName || '';
+          const context = leagueName || tournamentName || 'No Context';
 
           return (
             <div key={match.MatchID || match.id} className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <p className="text-sm text-gray-600 mb-2">
-                    {formattedDate} at {formattedTime} • {(match.Status || match.status || 'Scheduled').toUpperCase()}
-                  </p>
+                  <div className="flex items-center gap-3 mb-2">
+                    <p className="text-sm text-gray-600">
+                      {formattedDate} at {formattedTime}
+                    </p>
+                    <span className="text-gray-400">•</span>
+                    <span className={`text-xs font-semibold px-2 py-1 rounded ${
+                      (match.Status || match.status || 'Scheduled').toLowerCase() === 'completed' ? 'bg-green-100 text-green-800' :
+                      (match.Status || match.status || 'Scheduled').toLowerCase() === 'live' ? 'bg-red-100 text-red-800' :
+                      (match.Status || match.status || 'Scheduled').toLowerCase() === 'cancelled' ? 'bg-gray-100 text-gray-800' :
+                      'bg-blue-100 text-blue-800'
+                    }`}>
+                      {(match.Status || match.status || 'Scheduled').toUpperCase()}
+                    </span>
+                    <span className="text-gray-400">•</span>
+                    <span className={`text-xs font-medium px-2 py-1 rounded ${
+                      leagueName ? 'bg-purple-100 text-purple-800' : 'bg-orange-100 text-orange-800'
+                    }`}>
+                      {leagueName ? `⚽ ${leagueName}` : `🏆 ${tournamentName}`}
+                    </span>
+                  </div>
 
                   <div className="flex items-center gap-6">
                     <div className="text-center flex-1">

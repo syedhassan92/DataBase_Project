@@ -38,10 +38,13 @@ const PlayerTransfers = () => {
         const fetchSourceTeams = async () => {
             if (sourceLeague) {
                 try {
+                    console.log('Fetching teams for source league:', sourceLeague);
                     const teamsData = await apiService.teams.getByLeague(sourceLeague);
+                    console.log('Source teams fetched:', teamsData);
                     setSourceTeams(teamsData);
                 } catch (error) {
                     console.error('Error fetching source teams:', error);
+                    alert('Failed to fetch source teams: ' + (error.response?.data?.error?.message || error.message));
                     setSourceTeams([]);
                 }
             } else {
@@ -59,10 +62,16 @@ const PlayerTransfers = () => {
         const fetchPlayers = async () => {
             if (sourceTeam) {
                 try {
+                    console.log('Fetching players for source team:', sourceTeam);
                     const playersData = await apiService.players.getAll({ teamId: sourceTeam });
+                    console.log('Players fetched:', playersData);
                     setAvailablePlayers(playersData);
+                    if (playersData.length === 0) {
+                        alert('No players found in the selected team. Please add players to this team first.');
+                    }
                 } catch (error) {
                     console.error('Error fetching players:', error);
+                    alert('Failed to fetch players: ' + (error.response?.data?.error?.message || error.message));
                     setAvailablePlayers([]);
                 }
             } else {
@@ -78,15 +87,22 @@ const PlayerTransfers = () => {
         const fetchDestTeams = async () => {
             if (destLeague) {
                 try {
+                    console.log('Fetching teams for destination league:', destLeague);
                     const teamsData = await apiService.teams.getByLeague(destLeague);
+                    console.log('Destination teams fetched:', teamsData);
                     // Filter out source team if leagues match
                     if (sourceLeague == destLeague && sourceTeam) {
-                        setDestTeams(teamsData.filter(t => (t.TeamID || t.id) != sourceTeam));
+                        const filtered = teamsData.filter(t => (t.TeamID || t.id) != sourceTeam);
+                        setDestTeams(filtered);
+                        if (filtered.length === 0) {
+                            alert('No other teams available in this league for transfer.');
+                        }
                     } else {
                         setDestTeams(teamsData);
                     }
                 } catch (error) {
                     console.error('Error fetching destination teams:', error);
+                    alert('Failed to fetch destination teams: ' + (error.response?.data?.error?.message || error.message));
                     setDestTeams([]);
                 }
             } else {
@@ -99,14 +115,22 @@ const PlayerTransfers = () => {
 
     const fetchData = async () => {
         try {
+            console.log('Fetching transfers and leagues...');
             const [transfersData, leaguesData] = await Promise.all([
                 apiService.transfers.getAll(),
                 apiService.leagues.getAll()
             ]);
+            console.log('Transfers fetched:', transfersData);
+            console.log('Leagues fetched:', leaguesData);
             setTransfers(transfersData);
             setLeagues(leaguesData);
+            
+            if (!leaguesData || leaguesData.length === 0) {
+                console.warn('No leagues found in database');
+            }
         } catch (error) {
             console.error('Error fetching data:', error);
+            alert('Failed to load data: ' + (error.response?.data?.error?.message || error.message));
         } finally {
             setLoading(false);
         }
@@ -120,11 +144,42 @@ const PlayerTransfers = () => {
             return;
         }
 
+        // Validate all required fields
+        if (!sourceLeague) {
+            alert('Please select source league');
+            return;
+        }
+        if (!sourceTeam) {
+            alert('Please select source team');
+            return;
+        }
+        if (!formData.playerId) {
+            alert('Please select a player to transfer');
+            return;
+        }
+        if (!destLeague) {
+            alert('Please select destination league');
+            return;
+        }
+        if (!formData.toTeamId) {
+            alert('Please select destination team');
+            return;
+        }
+
         try {
-            await apiService.post('/transfers', {
-                ...formData,
-                fromLeagueId: sourceLeague
-            });
+            const transferData = {
+                playerId: formData.playerId,
+                toTeamId: formData.toTeamId,
+                transferDate: formData.transferDate,
+                transferType: formData.transferType,
+                contractDetails: formData.contractDetails,
+                fromLeagueId: sourceLeague,
+                toLeagueId: destLeague
+            };
+
+            console.log('Submitting transfer:', transferData);
+
+            await apiService.post('/transfers', transferData);
             alert('Transfer completed successfully');
             setShowModal(false);
 
@@ -132,6 +187,9 @@ const PlayerTransfers = () => {
             setSourceLeague('');
             setSourceTeam('');
             setDestLeague('');
+            setSourceTeams([]);
+            setDestTeams([]);
+            setAvailablePlayers([]);
             setFormData({
                 playerId: '',
                 toTeamId: '',
@@ -142,11 +200,10 @@ const PlayerTransfers = () => {
             });
 
             // Refresh list
-            const transfersData = await apiService.transfers.getAll();
-            setTransfers(transfersData);
+            fetchData();
         } catch (error) {
             console.error('Error creating transfer:', error);
-            alert('Failed to process transfer: ' + error.message);
+            alert('Failed to process transfer: ' + (error.response?.data?.error?.message || error.message));
         }
     };
 
@@ -236,6 +293,16 @@ const PlayerTransfers = () => {
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 my-8">
                         <h2 className="text-2xl font-bold text-gray-900 mb-6">Process Transfer</h2>
+                        
+                        {/* Debug Info */}
+                        {leagues.length === 0 && (
+                            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <p className="text-sm text-yellow-800">
+                                    ⚠️ No leagues found. Please create leagues first before processing transfers.
+                                </p>
+                            </div>
+                        )}
+                        
                         <form onSubmit={handleSubmit} className="space-y-4">
 
                             {/* Step 1: Source League */}
@@ -243,14 +310,22 @@ const PlayerTransfers = () => {
                                 <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">1. Source</h3>
                                 <div className="space-y-3">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Source League</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Source League {leagues.length > 0 && <span className="text-xs text-gray-500">({leagues.length} available)</span>}
+                                        </label>
                                         <select
                                             required
                                             value={sourceLeague}
-                                            onChange={(e) => setSourceLeague(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                                            onChange={(e) => {
+                                                console.log('Source league selected:', e.target.value);
+                                                setSourceLeague(e.target.value);
+                                            }}
+                                            disabled={leagues.length === 0}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black disabled:bg-gray-100"
                                         >
-                                            <option value="" className="text-gray-500">Select Source League</option>
+                                            <option value="" className="text-gray-500">
+                                                {leagues.length === 0 ? 'No leagues available - Create leagues first' : 'Select Source League'}
+                                            </option>
                                             {leagues.map(league => (
                                                 <option key={league.LeagueID || league.id} value={league.LeagueID || league.id} className="text-gray-900">
                                                     {league.LeagueName || league.name}
@@ -268,7 +343,9 @@ const PlayerTransfers = () => {
                                             disabled={!sourceLeague}
                                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black disabled:bg-gray-100"
                                         >
-                                            <option value="" className="text-gray-500">Select Source Team</option>
+                                            <option value="" className="text-gray-500">
+                                                {!sourceLeague ? 'Select source league first' : sourceTeams.length === 0 ? 'No teams in this league' : 'Select Source Team'}
+                                            </option>
                                             {sourceTeams.map(team => (
                                                 <option key={team.TeamID || team.id} value={team.TeamID || team.id} className="text-gray-900">
                                                     {team.TeamName || team.name}
@@ -286,7 +363,9 @@ const PlayerTransfers = () => {
                                             disabled={!sourceTeam}
                                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black disabled:bg-gray-100"
                                         >
-                                            <option value="" className="text-gray-500">Select Player</option>
+                                            <option value="" className="text-gray-500">
+                                                {!sourceTeam ? 'Select source team first' : availablePlayers.length === 0 ? 'No players in this team' : 'Select Player'}
+                                            </option>
                                             {availablePlayers.map(player => (
                                                 <option key={player.PlayerID || player.id} value={player.PlayerID || player.id} className="text-gray-900">
                                                     {player.PlayerName || player.name}
@@ -302,14 +381,22 @@ const PlayerTransfers = () => {
                                 <h3 className="text-sm font-semibold text-blue-500 uppercase tracking-wider mb-3">2. Destination</h3>
                                 <div className="space-y-3">
                                     <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Destination League</label>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Destination League {leagues.length > 0 && <span className="text-xs text-gray-500">({leagues.length} available)</span>}
+                                        </label>
                                         <select
                                             required
                                             value={destLeague}
-                                            onChange={(e) => setDestLeague(e.target.value)}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
+                                            onChange={(e) => {
+                                                console.log('Destination league selected:', e.target.value);
+                                                setDestLeague(e.target.value);
+                                            }}
+                                            disabled={leagues.length === 0}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black disabled:bg-gray-100"
                                         >
-                                            <option value="" className="text-gray-500">Select Destination League</option>
+                                            <option value="" className="text-gray-500">
+                                                {leagues.length === 0 ? 'No leagues available - Create leagues first' : 'Select Destination League'}
+                                            </option>
                                             {leagues.map(league => (
                                                 <option key={league.LeagueID || league.id} value={league.LeagueID || league.id} className="text-gray-900">
                                                     {league.LeagueName || league.name}
@@ -327,7 +414,9 @@ const PlayerTransfers = () => {
                                             disabled={!destLeague}
                                             className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black disabled:bg-gray-100"
                                         >
-                                            <option value="" className="text-gray-500">Select Destination Team</option>
+                                            <option value="" className="text-gray-500">
+                                                {!destLeague ? 'Select destination league first' : destTeams.length === 0 ? 'No available teams' : 'Select Destination Team'}
+                                            </option>
                                             {destTeams.map(team => (
                                                 <option key={team.TeamID || team.id} value={team.TeamID || team.id} className="text-gray-900">
                                                     {team.TeamName || team.name}

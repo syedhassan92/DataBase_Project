@@ -6,14 +6,16 @@ const { adminAuth } = require('../middleware/auth');
 router.get('/', async (req, res) => {
   try {
     const [transfers] = await db.query(`
-      SELECT t.*, p.PlayerName, l.LeagueName, fl.LeagueName as FromLeagueName,
-        ft.TeamName as FromTeamName, tt.TeamName as ToTeamName
+      SELECT t.*, p.PlayerName, l.LeagueName,
+        ft.TeamName as FromTeamName, tt.TeamName as ToTeamName,
+        fl.LeagueName as FromLeagueName
       FROM TRANSFER t
       LEFT JOIN PLAYER p ON t.PlayerID = p.PlayerID
       LEFT JOIN LEAGUE l ON t.LeagueID = l.LeagueID
-      LEFT JOIN LEAGUE fl ON t.FromLeagueID = fl.LeagueID
       LEFT JOIN TEAM ft ON t.FromTeamID = ft.TeamID
       LEFT JOIN TEAM tt ON t.ToTeamID = tt.TeamID
+      LEFT JOIN TEAMLEAGUE ftl ON ft.TeamID = ftl.TeamID
+      LEFT JOIN LEAGUE fl ON ftl.LeagueID = fl.LeagueID
       ORDER BY t.TransferDate DESC
     `);
     res.json(transfers);
@@ -29,7 +31,7 @@ router.post('/', adminAuth, async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    const { playerId, toTeamId, transferDate, transferType, contractDetails, fromLeagueId } = req.body;
+    const { playerId, toTeamId, transferDate, transferType, contractDetails } = req.body;
 
     if (!playerId || !toTeamId || !transferDate) {
       throw new Error('Player, destination team, and transfer date are required');
@@ -82,8 +84,8 @@ router.post('/', adminAuth, async (req, res) => {
 
     // 4. Insert Transfer Record
     const [result] = await connection.query(
-      'INSERT INTO TRANSFER (PlayerID, FromTeamID, ToTeamID, LeagueID, FromLeagueID, TransferDate, TransferType) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [playerId, fromTeamId, toTeamId, leagueId, fromLeagueId || null, transferDate, transferType || 'Permanent']
+      'INSERT INTO TRANSFER (PlayerID, FromTeamID, ToTeamID, LeagueID, TransferDate, TransferType) VALUES (?, ?, ?, ?, ?, ?)',
+      [playerId, fromTeamId, toTeamId, leagueId, transferDate, transferType || 'Permanent']
     );
 
     // 5. Create New Contract
